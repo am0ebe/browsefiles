@@ -72,6 +72,7 @@ from pygments.token import Token
 from glob import glob as glob #	wildcards in filenames. https://docs.python.ofrom pathlib import Path
 from pathlib import Path
 from pprint import pprint as pp
+import tempfile
 
 x = 0
 y = 0
@@ -162,7 +163,10 @@ def parse_filelist(filelist_):
 			line = make_abs_filepath(line)
 
 			for f in line:
-				if os.path.isfile(f) and isEditable(f):
+				if os.path.isdir(f):
+					files_with_path.append(f)
+					files_with_kid.append(f"__dir__:{f}")
+				elif os.path.isfile(f) and isEditable(f):
 					files_with_path.append(f)
 					files_with_kid += kid
 
@@ -184,15 +188,18 @@ def parse_filelist(filelist_):
 	files_with_path = todo_files_with_path + non_todo_files_with_path
 	files_with_kid = todo_files_with_kid + non_todo_files_with_kid
 
-	files = [f.split('/')[-1] for f in files_with_path] # filenames only
+	files = [f.split('/')[-1] + ('/' if os.path.isdir(f) else '') for f in files_with_path]
 
-	#load all files
 	contents=[]
 	for file in files_with_path:
-		with open( file ) as f:
-			lines = list( f )
-			lines = [x.rstrip() for x in lines] #remove trailing '\n'
-			contents.append( lines )
+		if os.path.isdir(file):
+			entries = sorted(os.listdir(file))
+			contents.append(entries)
+		else:
+			with open( file ) as f:
+				lines = list( f )
+				lines = [x.rstrip() for x in lines] #remove trailing '\n'
+				contents.append( lines )
 
 def init_curses():
 	global gui, contents, maxPage, nColor
@@ -551,9 +558,11 @@ def print_help():
 	x=curses.COLS//3
 	# p("a,w,s,d 	- navigate",color(COLOR_THEME))
 	# x=curses.COLS//3
-	p("←↑↓→			- navigate",color(COLOR_THEME))
+	p("↑↓			- prev/next file",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("shift + ←↑↓→	- zoom in/out/sideways",color(COLOR_THEME))
+	p("PgUp/PgDn		- scroll page",color(COLOR_THEME))
+	x=curses.COLS//3
+	p("← →			- zoom out / zoom in",color(COLOR_THEME))
 	x=curses.COLS//3
 	p("f,/		- find",color(COLOR_THEME))
 	x=curses.COLS//3
@@ -624,8 +633,18 @@ def printBIG2(str,y=0,x=0):
 	return y,x
 
 def zoom_in(file_idx):
-	if files_with_kid[file_idx] != " ":
-		os.system(sys.argv[0] + " " + files_with_kid[file_idx]) #recursion
+	kid = files_with_kid[file_idx]
+	if kid.startswith("__dir__:"):
+		dirpath = kid[8:]
+		with tempfile.NamedTemporaryFile(mode='w', suffix='.fl', delete=False, prefix='bf_') as tf:
+			tf.write(f"^{filelist_with_path}\n\n{dirpath}/**\n")
+			tmppath = tf.name
+		os.system(f"{sys.argv[0]} {tmppath}")
+		try: os.unlink(tmppath)
+		except: pass
+		exit()
+	elif kid != " ":
+		os.system(sys.argv[0] + " " + kid)
 		exit()
 
 def zoom_out():
@@ -717,33 +736,33 @@ def main(stdscr):
 			edit(*files_with_path)
 			exit()
 
-		elif ch in [ curses.KEY_UP, curses.KEY_PPAGE ]:
+		elif ch in [ curses.KEY_UP ]:
+			file_idx = (file_idx - 1) % len(files)
+			maxPage = len(contents[file_idx]) // curses.LINES
+			page=0
+
+		elif ch in [ curses.KEY_DOWN ]:
+			file_idx = (file_idx + 1) % len(files)
+			maxPage = len(contents[file_idx]) // curses.LINES
+			page=0
+
+		elif ch in [ curses.KEY_PPAGE ]:
 			if page > 0:
 				page-=1
 			else:
 				page = maxPage
 
-		elif ch in [ curses.KEY_DOWN, curses.KEY_NPAGE, ord(' ') ]:
+		elif ch in [ curses.KEY_NPAGE, ord(' ') ]:
 			if page < maxPage:
 				page+=1
 			else:
 				page = 0
 
-		elif ch in [ curses.KEY_LEFT, 353 ]: #shift+tab
-			if file_idx != 0:
-				file_idx-=1
-				maxPage = len(contents[file_idx]) // curses.LINES
-				page=0
-			else:
-				file_idx = len(files) - 1
+		elif ch in [ curses.KEY_LEFT ]:
+			zoom_out()
 
-		elif ch in [curses.KEY_RIGHT, ord(' '), 9]: #tab
-			if file_idx != len(files)-1:
-				file_idx+=1
-				maxPage = len(contents[file_idx]) // curses.LINES
-				page=0
-			else:
-				file_idx = 0
+		elif ch in [ curses.KEY_RIGHT ]:
+			zoom_in(file_idx)
 
 		elif ch == curses.KEY_HOME:
 			page=0
@@ -825,19 +844,11 @@ def main(stdscr):
 			#del / curses.KEY_DC 330
 			#space 32
 			print_filelist(file_idx)
-		elif ch in [ ord('+'), ord('='), 337, 567 ] : # shift/ctrl + up
+		elif ch in [ ord('+'), ord('=') ] :
 			zoom_out()
 
-		elif ch in [ ord('-'), ord('_'), 336, 526 ] : # shift/ctrl + down
+		elif ch in [ ord('-'), ord('_') ] :
 			zoom_in(file_idx)
-
-		elif ch in [ ord('['), 393 ] : # shift + left
-			zoom_side(isRight=False)
-			file_idx=0
-
-		elif ch in [ ord(']'), 402 ] : # shift + right
-			zoom_side(isRight=True)
-			file_idx=0
 		else:
 			pass
 
