@@ -558,11 +558,11 @@ def print_help():
 	x=curses.COLS//3
 	# p("a,w,s,d 	- navigate",color(COLOR_THEME))
 	# x=curses.COLS//3
-	p("↑↓			- prev/next file",color(COLOR_THEME))
+	p("←↑↓→			- prev/next file",color(COLOR_THEME))
 	x=curses.COLS//3
 	p("PgUp/PgDn		- scroll page",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("← →			- zoom out / zoom in",color(COLOR_THEME))
+	p("ctrl+↑ ctrl+↓	- zoom out / zoom in",color(COLOR_THEME))
 	x=curses.COLS//3
 	p("f,/		- find",color(COLOR_THEME))
 	x=curses.COLS//3
@@ -759,20 +759,20 @@ def main(stdscr):
 				page = 0
 
 		elif ch in [ curses.KEY_LEFT ]:
-			if parent:
-				zoom_out()
-			else:
-				file_idx = (file_idx - 1) % len(files)
-				maxPage = len(contents[file_idx]) // curses.LINES
-				page=0
+			file_idx = (file_idx - 1) % len(files)
+			maxPage = len(contents[file_idx]) // curses.LINES
+			page=0
 
 		elif ch in [ curses.KEY_RIGHT ]:
-			if files_with_kid[file_idx] != " ":
-				zoom_in(file_idx)
-			else:
-				file_idx = (file_idx + 1) % len(files)
-				maxPage = len(contents[file_idx]) // curses.LINES
-				page=0
+			file_idx = (file_idx + 1) % len(files)
+			maxPage = len(contents[file_idx]) // curses.LINES
+			page=0
+
+		elif ch in [ 567 ]: # ctrl+up
+			zoom_out()
+
+		elif ch in [ 526 ]: # ctrl+down
+			zoom_in(file_idx)
 
 		elif ch == curses.KEY_HOME:
 			page=0
@@ -854,11 +854,6 @@ def main(stdscr):
 			#del / curses.KEY_DC 330
 			#space 32
 			print_filelist(file_idx)
-		elif ch in [ ord('+'), ord('=') ] :
-			zoom_out()
-
-		elif ch in [ ord('-'), ord('_') ] :
-			zoom_in(file_idx)
 		else:
 			pass
 
