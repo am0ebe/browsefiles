@@ -759,10 +759,20 @@ def main(stdscr):
 				page = 0
 
 		elif ch in [ curses.KEY_LEFT ]:
-			zoom_out()
+			if parent:
+				zoom_out()
+			else:
+				file_idx = (file_idx - 1) % len(files)
+				maxPage = len(contents[file_idx]) // curses.LINES
+				page=0
 
 		elif ch in [ curses.KEY_RIGHT ]:
-			zoom_in(file_idx)
+			if files_with_kid[file_idx] != " ":
+				zoom_in(file_idx)
+			else:
+				file_idx = (file_idx + 1) % len(files)
+				maxPage = len(contents[file_idx]) // curses.LINES
+				page=0
 
 		elif ch == curses.KEY_HOME:
 			page=0
