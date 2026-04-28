@@ -13,49 +13,6 @@
 #	Note:
 #	curses key combination can change (different OS, terminal)
 #	use curses_key.py to find out keycode and adjust accordingly
-###############################
-# 2D
-### xtend
-# - [ ] more tags to filter
-#     - urgent, important, scanner tags ➡ combine + more tags, see src
-#     - dyn/conf tags.
-# - [ ] check next week tasks (search tasks in a given range)
-# 	- [ ] any task with @YYMMDD/@MMDD
-# - tasks
-# 	- subtasks?
-# - add prio!
-# 	- [🔗 gtd](../le/gtd.html) [[.md](../le/gtd.md)] ➡ ABCWZ
-# 	- find syntax. eg: @z @w @mmdd @yymmdd @...
-# - linx
-# 	- clickable❓
-# 	- T x-link notes which belong category++ > SSOT
-# 	- open md w sub (or obsidian)
-# - syntax hilite md
-#     - curses❓min own MD parser!
-#     - start only hilite: code, linx, h, bold, it, lists, line, img
-#     - pygments 🔍 ❓
-# - open() 4 non-txt
-#     - A) mk list non-txt, display menu
-#     -  if select+enter: run terminal o file (needs .bashrc)
-#     - B) don't ign non-txt, just display name
-#     - if enter: "--"
-# 	- eg trainingsplan-v2.ods, ~/go/po/dox ... pdf, re/my_lib.ods, RADAR.pdf
-#     - work together with o(), multi-select (1, all, some)
-# - toggle done/note() - show/hide done/note
-#     -  press D/N
-#     - D parse for done
-#     - N in Dir find note*.md
-#	* show icons if up/down/left/right/exists!
-# -------------------------------
-# > define correct/consistent tabsize for all files and set here in script!
-# > file_idx in main global, so that go left and back will go back to same pos? safe and restore pos...
-# > display list of file names and hilight current one...
-#	-> need to truncate if list/filenames are too long
-# > F8 changes day/night theme
-# > press number to jump to file/page
-# > use regex in find: either create two finds or prepend query with marker
-#
-###############################
 
 import xerox #pip3 install -U xerox # api xclip
 import os
