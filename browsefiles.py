@@ -562,7 +562,9 @@ def print_help():
 	x=curses.COLS//3
 	p("PgUp/PgDn		- scroll page",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("ctrl+↑ ctrl+↓	- zoom out / zoom in",color(COLOR_THEME))
+	p("+/= ctrl+↑		- zoom out",color(COLOR_THEME))
+	x=curses.COLS//3
+	p("-/_ ctrl+↓		- zoom in",color(COLOR_THEME))
 	x=curses.COLS//3
 	p("f,/		- find",color(COLOR_THEME))
 	x=curses.COLS//3
@@ -768,10 +770,10 @@ def main(stdscr):
 			maxPage = len(contents[file_idx]) // curses.LINES
 			page=0
 
-		elif ch in [ 567 ]: # ctrl+up
+		elif ch in [ ord('+'), ord('='), 337, 567 ] : # shift/ctrl+up
 			zoom_out()
 
-		elif ch in [ 526 ]: # ctrl+down
+		elif ch in [ ord('-'), ord('_'), 336, 526 ] : # shift/ctrl+down
 			zoom_in(file_idx)
 
 		elif ch == curses.KEY_HOME:
