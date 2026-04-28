@@ -66,6 +66,9 @@ import random
 import time
 import pyfiglet # BIG text
 import magic #for isAscii()
+from pygments import lex
+from pygments.lexers.markup import MarkdownLexer
+from pygments.token import Token
 from glob import glob as glob #	wildcards in filenames. https://docs.python.ofrom pathlib import Path
 from pathlib import Path
 from pprint import pprint as pp
@@ -101,7 +104,6 @@ def isEditable(file_abs):
 	if any(e in file_type for e in editable) and not any(i in file_type for i in ignore):
 		return True
 	else:
-		pp(f"skipping uneditable: {file_abs} of type {file_type}")
 		return False
 
 def make_abs_filepath(line):
@@ -154,7 +156,7 @@ def parse_filelist(filelist_):
 			# split line and xtract second file as kid and store in files_with_kid
 			kid=" "
 			if " " in line:
-				line,kid = line.split(" ")
+				line,kid = line.split(" ", 1)
 				kid = make_abs_filepath(kid)
 
 			line = make_abs_filepath(line)
@@ -213,6 +215,17 @@ def init_curses():
 
 	maxPage = len(contents[0]) // curses.LINES
 
+	global MD_ATTR
+	MD_ATTR = {
+		Token.Generic.Heading:    curses.color_pair(5) | curses.A_BOLD,  # yellow bold
+		Token.Generic.Strong:     curses.A_BOLD,
+		Token.Generic.Emph:       curses.A_UNDERLINE,
+		Token.Literal.String:     curses.color_pair(3),                  # green — inline code
+		Token.Comment:            curses.color_pair(1),                  # cyan — blockquotes/comments
+		Token.Keyword:            curses.color_pair(4),                  # red
+		Token.Name.Tag:           curses.color_pair(2),                  # magenta
+	}
+
 
 def edit(*args):
 	#sa https://stackabuse.com/variable-length-arguments-in-python-with-args-and-kwargs/
@@ -229,10 +242,14 @@ def printHeader(page, maxPage, file_idx, nfiles):
 	global HEADER_SIZE
 	HEADER_SIZE=4
 
+	has_parent = bool(parent)
+	has_kid = files_with_kid[file_idx] != " "
+	nav = ("←" if has_parent else " ") + " " + ("→" if has_kid else " ")
+
 	s1=f"####################### file [{file_idx+1}/{nfiles}] ###"
 	p(s1)
 
-	s2_1="#       "
+	s2_1=f"# {nav}   "
 	p(s2_1,0,False)
 
 	s2_2=files[file_idx]
@@ -261,25 +278,32 @@ def printPage(page, content, header):
 	while start <= idx < end:
 		if idx >= len(content):
 			break
-		p(content[idx])
+		p(content[idx], highlight=True)
 		idx+=1
 
-def p(msg="", attr=0, add_newline=True):
+def p(msg="", attr=0, add_newline=True, highlight=False):
 	global y, x, gui
 
 	msg = str(msg[:curses.COLS-1])
 
 	try:
-		gui.addstr(y,x,msg,attr)
-	except Exception as e:
-		print(e) #?? needed
+		if highlight and attr == 0:
+			for tok_type, tok_val in lex(msg, MarkdownLexer()):
+				if x >= curses.COLS - 1:
+					break
+				style = next((v for k, v in MD_ATTR.items() if tok_type in k), curses.A_NORMAL)
+				trimmed = tok_val[:curses.COLS - x - 1]
+				gui.addstr(y, x, trimmed, style)
+				x += len(trimmed)
+		else:
+			gui.addstr(y, x, msg, attr)
+			x += len(msg)
+	except Exception:
 		pass
 
 	if add_newline:
 		x = 0
 		y += 1
-	else:
-		x += len(msg)
 
 def find(query=""):
 
