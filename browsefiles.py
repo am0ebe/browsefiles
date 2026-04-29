@@ -131,6 +131,21 @@ def make_abs_filepath(line):
 
 	return line
 
+def _read_conf_section(conf_abs, section_name):
+	"""Extract non-blank, non-comment lines from a [section_name] block in a .conf file."""
+	lines = []
+	in_section = False
+	with open(conf_abs) as f:
+		for raw in f:
+			s = raw.strip()
+			if s.startswith('[') and s.endswith(']'):
+				in_section = (s[1:-1].strip() == section_name)
+				continue
+			if in_section and s and not s.startswith('#'):
+				lines.append(s)
+	return lines
+
+
 def parse_filelist(filelist_):
 	#call before init_curses!
 	global files_with_path, files_with_kid, filelist_with_path, filelist
@@ -139,37 +154,78 @@ def parse_filelist(filelist_):
 	files = []
 	files_with_path = []
 	files_with_kid = []
-	filelist_with_path = make_abs_filepath(filelist_)[0]
+	parent = ""
 
-	cwd = os.path.dirname(filelist_with_path)
-	os.chdir(cwd) #! then kids without abspath will be found relative to filelist dir
-	filelist = os.path.basename(filelist_with_path)
+	# detect conf:section format — colon in the basename
+	arg = filelist_.strip()
+	is_conf = ':' in os.path.basename(arg)
 
-	with open(filelist_with_path) as f:
-		lines = f.readlines()
+	if is_conf:
+		colon    = arg.rfind(':')
+		conf_ref = arg[:colon]
+		section  = arg[colon+1:]
+		conf_abs = str(Path(os.path.expanduser(conf_ref)).resolve())
+		filelist_with_path = conf_abs + ':' + section
+		filelist           = os.path.basename(conf_abs) + ':' + section
+		cwd = os.path.dirname(conf_abs)
+		os.chdir(cwd)
+		raw_lines = _read_conf_section(conf_abs, section)
+	else:
+		filelist_with_path = make_abs_filepath(arg)[0]
+		cwd = os.path.dirname(filelist_with_path)
+		os.chdir(cwd)
+		filelist = os.path.basename(filelist_with_path)
+		with open(filelist_with_path) as f:
+			raw_lines = [l.rstrip('\n') for l in f]
 
-		for line in lines:
-			if line.startswith("#") or line.isspace():
-				continue #ignore comments, empty
+	for line in raw_lines:
+		stripped = line.strip()
+		if not stripped or stripped.startswith('#'):
+			continue
 
-			if line.startswith("^"):
-				parent=make_abs_filepath(line[1:-1])[0] #quickfix: abs: glob: always returns list
-				continue
+		if stripped.startswith('^'):
+			ref = stripped[1:].strip()
+			if is_conf:
+				parent = conf_abs + ':' + ref
+			else:
+				res = make_abs_filepath(ref)
+				parent = res[0] if res else ''
+			continue
 
-			# split line and extract second token as kid filelist path
-			kid = [""]  # sentinel: no kid
-			if " " in line:
-				line, kid = line.split(" ", 1)
-				kid = make_abs_filepath(kid)
+		# parse kid: ' > **' / ' > section' (new) or ' kid_path' (old)
+		kid            = ['']   # sentinel: no kid
+		kid_is_globdir = False  # True → per-file __dir__ expansion
 
-			line = make_abs_filepath(line)
+		kid_raw = ''
+		if ' > ' in stripped:
+			file_part, kid_raw = stripped.split(' > ', 1)
+			kid_raw = kid_raw.strip()
+		elif ' ' in stripped:
+			file_part, kid_raw = stripped.split(' ', 1)
+			kid_raw = kid_raw.strip()
+		else:
+			file_part = stripped
 
-			for f in line:
-				if os.path.isdir(f):
-					files_with_path.append(f)
-					files_with_kid.append(f"__dir__:{f}")
-				elif os.path.isfile(f) and isEditable(f):
-					files_with_path.append(f)
+		if kid_raw:
+			if kid_raw == '**':
+				kid_is_globdir = True
+			elif is_conf:
+				kid = [conf_abs + ':' + kid_raw]
+			else:
+				res = make_abs_filepath(kid_raw)
+				kid = res if res else ['']
+
+		matched = make_abs_filepath(file_part)
+
+		for f in matched:
+			if os.path.isdir(f):
+				files_with_path.append(f)
+				files_with_kid.append(f'__dir__:{f}')
+			elif os.path.isfile(f) and isEditable(f):
+				files_with_path.append(f)
+				if kid_is_globdir:
+					files_with_kid.append(f'__dir__:{os.path.dirname(f)}')
+				else:
 					files_with_kid += kid
 
 	# sort
@@ -177,18 +233,15 @@ def parse_filelist(filelist_):
 	files_with_kid=list(list(zip(*sort_together))[0])
 	files_with_path=list(list(zip(*sort_together))[1])
 
-	# put todos first, while preserving the order of the rest
-	todo_files_with_path = [f for f in files_with_path if "todo" in f]
-	todo_files_with_kid  = [files_with_kid[idx] for idx, f in enumerate(files_with_path) if "todo" in f]
+	# float todos to top
+	todo_fp  = [f for f in files_with_path if "todo" in f]
+	todo_fk  = [files_with_kid[i] for i, f in enumerate(files_with_path) if "todo" in f]
+	other_fp = [f for f in files_with_path if "todo" not in f]
+	other_fk = [files_with_kid[i] for i, f in enumerate(files_with_path) if "todo" not in f]
+	files_with_path = todo_fp + other_fp
+	files_with_kid  = todo_fk + other_fk
 
-	non_todo_files_with_path = [f for f in files_with_path if "todo" not in f]
-	non_todo_files_with_kid  = [files_with_kid[idx] for idx, f in enumerate(files_with_path) if "todo" not in f]
-
-	files_with_path = todo_files_with_path + non_todo_files_with_path
-	files_with_kid  = todo_files_with_kid  + non_todo_files_with_kid
-
-	files = [f.split('/')[-1] + ('/' if os.path.isdir(f) else '') for f in files_with_path]
-
+	files    = [f.split('/')[-1] + ('/' if os.path.isdir(f) else '') for f in files_with_path]
 	contents = [None] * len(files_with_path)  # lazy: loaded on first access via get_content()
 
 _nav_link_re = re.compile(r'^\[.+?\]\(.+?\)\s*$')
@@ -906,37 +959,59 @@ def zoom_out():
 		os.system(f"{sys.argv[0]} {parent}")
 		exit()
 
+def _extract_kids_from_lines(raw_lines, conf_abs=None, parent_dir=''):
+	"""Collect unique non-** kid references from filelist/conf lines."""
+	kids = []
+	for line in raw_lines:
+		s = line.strip()
+		if not s or s.startswith('#') or s.startswith('^'):
+			continue
+		kid_raw = ''
+		if ' > ' in s:
+			_, kid_raw = s.split(' > ', 1)
+			kid_raw = kid_raw.strip()
+		elif ' ' in s:
+			_, kid_raw = s.split(' ', 1)
+			kid_raw = kid_raw.strip()
+		if not kid_raw or kid_raw == '**':
+			continue
+		if conf_abs:
+			ref = conf_abs + ':' + kid_raw
+		else:
+			ref = os.path.expanduser(kid_raw)
+			if not os.path.isabs(ref):
+				ref = os.path.join(parent_dir, ref)
+			ref = str(Path(ref).resolve())
+			if not os.path.isfile(ref):
+				continue
+		if ref not in kids:
+			kids.append(ref)
+	return kids
+
+
 def zoom_side(isRight=False):
 	if not parent:
 		return
 
 	cur = filelist_with_path
-	parent_dir = os.path.dirname(parent)
+	is_conf_parent = ':' in os.path.basename(parent)
 
-	# read parent filelist directly to collect kid filelist paths (no global mutation)
-	kids = []
-	try:
-		with open(parent) as f:
-			for line in f:
-				line = line.strip()
-				if not line or line.startswith('#') or line.startswith('^'):
-					continue
-				if ' ' in line:
-					_, kid = line.split(' ', 1)
-					kid = kid.strip()
-					kid = os.path.expanduser(kid)
-					if not os.path.isabs(kid):
-						kid = os.path.join(parent_dir, kid)
-					kid = str(Path(kid).resolve())
-					if os.path.isfile(kid) and kid not in kids:
-						kids.append(kid)
-	except OSError:
-		return
+	if is_conf_parent:
+		conf_path, par_section = parent.rsplit(':', 1)
+		kids = _extract_kids_from_lines(_read_conf_section(conf_path, par_section),
+		                                conf_abs=conf_path)
+	else:
+		try:
+			with open(parent) as f:
+				raw = [l.rstrip('\n') for l in f]
+		except OSError:
+			return
+		kids = _extract_kids_from_lines(raw, parent_dir=os.path.dirname(parent))
 
 	if cur not in kids or len(kids) < 2:
 		return
 
-	idx = kids.index(cur)
+	idx     = kids.index(cur)
 	sibling = kids[(idx + (1 if isRight else -1)) % len(kids)]
 	os.system(f"{sys.argv[0]} {sibling}")
 	exit()
@@ -994,7 +1069,10 @@ def main(stdscr):
 			break
 
 		elif ch in [ ord('l') ]:
-			edit( sys.argv[1])
+			target = sys.argv[1]
+			if ':' in os.path.basename(target):
+				target = target.rsplit(':', 1)[0]  # open conf file, not conf:section string
+			edit(target)
 			exit()
 
 		elif ch in [ ord('p') ]:
