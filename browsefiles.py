@@ -43,6 +43,20 @@ HEADER_SIZE = 4
 DATE_RE    = re.compile(r'@(\d{4}|\d{6})(?!\d|\w)')
 MD_LINK_RE = re.compile(r'\[([^\]]+)\]\(([^)]+)\)')
 
+# --- themes -----------------------------------------------------------
+# Pair fg colors per theme (pairs 1-7: CYAN MAG GREEN RED YELLOW WHITE BLUE)
+# Color ints: BLACK=0 RED=1 GREEN=2 YELLOW=3 BLUE=4 MAGENTA=5 CYAN=6 WHITE=7
+THEMES = ['night', 'twilight', 'day']
+THEME_IDX = 0
+THEME_BG  = {'night': '#222222', 'twilight': '#2e3436', 'day': '#ffffff'}
+THEME_FG  = {'night': '#ffffff',  'twilight': '#e5ffd1', 'day': '#000000'}
+THEME_PAIRS = {
+    'night':    [6, 5, 2, 1, 3, 7, 4],   # CYAN MAG GREEN RED YELLOW WHITE BLUE
+    'twilight': [6, 5, 2, 1, 3, 7, 4],
+    'day':      [4, 5, 2, 1, 4, 0, 6],   # BLUE MAG GREEN RED BLUE  BLACK CYAN
+}
+# ----------------------------------------------------------------------
+
 _zoom_source    = ''     # file path that brought us into this filelist (for zoom-out)
 VIEW_MODE       = 'all'  # 'all' | 'todo' | 'done'
 _prev_view      = 'all'  # view before last toggle (for d/t toggle-back)
@@ -374,6 +388,19 @@ def _current_content(file_idx):
 def _maxpage(file_idx):
 	return len(_current_content(file_idx)) // curses.LINES
 
+def _apply_theme(theme_name):
+	"""Reinitialize curses color pairs and set terminal fg/bg via OSC sequences."""
+	bg = -1  # transparent: uses terminal background (set via OSC below)
+	for i, fg_c in enumerate(THEME_PAIRS[theme_name], 1):
+		curses.init_pair(i, fg_c, bg)
+	# OSC 10 = fg, OSC 11 = bg — write directly to /dev/tty (safe during curses)
+	try:
+		seq = f"\033]10;{THEME_FG[theme_name]}\007\033]11;{THEME_BG[theme_name]}\007"
+		with open('/dev/tty', 'wb') as tty:
+			tty.write(seq.encode())
+	except OSError:
+		pass
+
 def init_curses():
 	global gui, contents, maxPage, nColor
 
@@ -382,15 +409,13 @@ def init_curses():
 	curses.curs_set(0) 	# hide cursor
 	gui.keypad(1) 	# nicer escapes like KEY.LEFT
 
-	#colors
-	nColor=1
-	curses.init_pair(nColor, curses.COLOR_CYAN, curses.COLOR_BLACK); nColor +=1
-	curses.init_pair(nColor, curses.COLOR_MAGENTA, curses.COLOR_BLACK); nColor +=1
-	curses.init_pair(nColor, curses.COLOR_GREEN, curses.COLOR_BLACK); nColor +=1
-	curses.init_pair(nColor, curses.COLOR_RED, curses.COLOR_BLACK); nColor +=1  # noqa: E702
-	curses.init_pair(nColor, curses.COLOR_YELLOW, curses.COLOR_BLACK); nColor +=1
-	curses.init_pair(nColor, curses.COLOR_WHITE, curses.COLOR_BLACK); nColor +=1  # noqa: E702
-	curses.init_pair(nColor, curses.COLOR_BLUE, curses.COLOR_BLACK); nColor +=1
+	try:
+		curses.use_default_colors()  # enables -1 = transparent background
+	except Exception:
+		pass
+
+	nColor = 8  # 7 pairs (1-7) will be set by _apply_theme; keep nColor=8 for color()
+	_apply_theme(THEMES[THEME_IDX])
 
 	maxPage = _maxpage(0)
 
@@ -967,6 +992,8 @@ def print_help():
 	x=curses.COLS//3
 	p("PgUp/PgDn    - scroll page",color(COLOR_THEME))
 	x=curses.COLS//3
+	p("F9           - theme: night → twilight → day → night",color(COLOR_THEME))
+	x=curses.COLS//3
 	p("+/= ctrl+↑   - ⇧ zoom out",color(COLOR_THEME))
 	x=curses.COLS//3
 	p("-/_ ctrl+↓   - ⇩ zoom in",color(COLOR_THEME))
@@ -1147,7 +1174,7 @@ def zoom_side(isRight=False):
 
 def main(stdscr):
 
-	global x, y, gui, maxPage, GLOBAL_SEARCH, CURRENT_FILTER, _zoom_source
+	global x, y, gui, maxPage, GLOBAL_SEARCH, CURRENT_FILTER, _zoom_source, THEME_IDX
 	global VIEW_MODE, _prev_view, _notes_mode, _notes_content, _notes_file, _prev_notes_view
 
 	gui = stdscr
@@ -1270,6 +1297,11 @@ def main(stdscr):
 
 		elif ch in [ ord(']') ]:
 			zoom_side(isRight=True)
+
+		elif ch == curses.KEY_F9:
+			THEME_IDX = (THEME_IDX + 1) % len(THEMES)
+			_apply_theme(THEMES[THEME_IDX])
+			gui.clear()
 
 		elif ch == curses.KEY_HOME:
 			page=0
