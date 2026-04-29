@@ -31,6 +31,7 @@ from pathlib import Path
 from pprint import pprint as pp
 import tempfile
 import datetime
+import subprocess
 
 x = 0
 y = 0
@@ -42,8 +43,14 @@ HEADER_SIZE = 4
 DATE_RE    = re.compile(r'@(\d{4}|\d{6})(?!\d|\w)')
 MD_LINK_RE = re.compile(r'\[([^\]]+)\]\(([^)]+)\)')
 
-_zoom_source = ''  # file path that brought us into this filelist (for zoom-out)
-VIEW_MODE = 'all'  # 'all' | 'todo' | 'done'
+_zoom_source    = ''     # file path that brought us into this filelist (for zoom-out)
+VIEW_MODE       = 'all'  # 'all' | 'todo' | 'done'
+_prev_view      = 'all'  # view before last toggle (for d/t toggle-back)
+_notes_mode     = False  # True = displaying companion notes file
+_notes_content  = None   # loaded lines of notes file
+_notes_file     = None   # path of current notes file
+_prev_notes_view= 'all'  # VIEW_MODE to restore when toggling notes off
+_git_done_cache = {}     # file_path → list of lines (cached per session)
 
 FILTER_CONFIG = os.path.expanduser("~/.config/user/browsefiles/filters.conf")
 FILTERS = {}  # key_char -> fdef dict (aliases share same dict object)
@@ -298,8 +305,74 @@ def find_notes_file(file_path):
 			return full
 	return None
 
+def get_content_from_file(path):
+	try:
+		with open(path) as f:
+			return [l.rstrip() for l in f]
+	except Exception:
+		return ['(error reading file)']
+
+def git_done_content(file_path):
+	if file_path in _git_done_cache:
+		return _git_done_cache[file_path]
+	try:
+		raw = subprocess.check_output(
+			['git', 'log', '--follow', '-p', '-40', '--', file_path],
+			cwd=os.path.dirname(os.path.abspath(file_path)) or '.',
+			text=True, stderr=subprocess.DEVNULL
+		)
+	except Exception:
+		result = ['(git not available)']
+		_git_done_cache[file_path] = result
+		return result
+
+	commits = []       # [(msg, [lines])]
+	cur_msg, cur_done, in_done = '', [], False
+	for line in raw.splitlines():
+		if line.startswith('commit '):
+			if cur_done:
+				commits.append((cur_msg, cur_done[:]))
+			cur_msg, cur_done, in_done = '', [], False
+		elif line.startswith('    ') and not cur_msg:
+			cur_msg = line.strip()
+		elif line.startswith('@@'):
+			in_done = False
+		elif line.startswith('-') and not line.startswith('---'):
+			body = line[1:]
+			if body.strip().startswith('#'):
+				in_done = (_classify_section(body) == 'done')
+			elif in_done and body.strip():
+				cur_done.append(body)
+		elif line.startswith('+') and not line.startswith('+++'):
+			body = line[1:]
+			if body.strip().startswith('#'):
+				in_done = False  # new heading in added block resets context
+	if cur_done:
+		commits.append((cur_msg, cur_done))
+
+	if not commits:
+		result = ['(no done items in git history)']
+	else:
+		result = ['## 📜 Git Done History', '']
+		for msg, items in commits:
+			result.append(f'### {msg}')
+			result.extend(items)
+			result.append('')
+	_git_done_cache[file_path] = result
+	return result
+
+def _current_content(file_idx):
+	if _notes_mode and _notes_content is not None:
+		return _notes_content
+	base = filter_content(get_content(file_idx), VIEW_MODE)
+	if VIEW_MODE == 'done':
+		git = git_done_content(files_with_path[file_idx])
+		sep = [''] if (base and base != ['(nothing)']) else []
+		return base + sep + git
+	return base
+
 def _maxpage(file_idx):
-	return len(filter_content(get_content(file_idx), VIEW_MODE)) // curses.LINES
+	return len(_current_content(file_idx)) // curses.LINES
 
 def init_curses():
 	global gui, contents, maxPage, nColor
@@ -358,7 +431,12 @@ def printHeader(page, maxPage, file_idx, nfiles):
 	p(f"# {nav}  ", 0, False)
 	printFileStripInline(file_idx)
 
-	view_tag = f" [{VIEW_MODE.upper()}]" if VIEW_MODE != 'all' else ""
+	if _notes_mode and _notes_file:
+		view_tag = f" [NOTES: {os.path.basename(_notes_file)}]"
+	elif VIEW_MODE != 'all':
+		view_tag = f" [{VIEW_MODE.upper()}]"
+	else:
+		view_tag = ""
 	s3 = f"## page [{page+1}/{maxPage+1}]{view_tag} "
 	s3 += "#" * max(0, W - len(s3))
 	p(s3)
@@ -897,11 +975,15 @@ def print_help():
 	x=curses.COLS//3
 	p("f,/          - find (with context expansion)",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("T/D/A        - view: Todos / Done / All",color(COLOR_THEME))
+	p("t/d          - toggle Todo/Done view (press again to go back)",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("V            - cycle views (all→todo→done→all)",color(COLOR_THEME))
+	p("a            - show All (reset view)",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("N            - open companion notes file",color(COLOR_THEME))
+	p("v            - cycle views all→todo→done→all",color(COLOR_THEME))
+	x=curses.COLS//3
+	p("n            - toggle notes companion file (notes_XY.md)",color(COLOR_THEME))
+	x=curses.COLS//3
+	p("  done view also shows git-history removed done items",color(COLOR_THEME))
 	x=curses.COLS//3
 	p("L            - list links in current file  (o=follow in results)",color(COLOR_THEME))
 	x=curses.COLS//3
@@ -1065,7 +1147,8 @@ def zoom_side(isRight=False):
 
 def main(stdscr):
 
-	global x, y, gui, maxPage, GLOBAL_SEARCH, CURRENT_FILTER, _zoom_source, VIEW_MODE
+	global x, y, gui, maxPage, GLOBAL_SEARCH, CURRENT_FILTER, _zoom_source
+	global VIEW_MODE, _prev_view, _notes_mode, _notes_content, _notes_file, _prev_notes_view
 
 	gui = stdscr
 
@@ -1103,7 +1186,7 @@ def main(stdscr):
 		x=y=0
 
 		printHeader(page, maxPage, file_idx, len(files))
-		printPage(page, filter_content(get_content(file_idx), VIEW_MODE), HEADER_SIZE)
+		printPage(page, _current_content(file_idx), HEADER_SIZE)
 
 		if GLOBAL_SEARCH:
 			ch = ord('f') #find
@@ -1166,11 +1249,13 @@ def main(stdscr):
 
 		elif ch in [ curses.KEY_LEFT ]:
 			file_idx = (file_idx - 1) % len(files)
+			_notes_mode = False
 			maxPage = _maxpage(file_idx)
 			page=0
 
 		elif ch in [ curses.KEY_RIGHT ]:
 			file_idx = (file_idx + 1) % len(files)
+			_notes_mode = False
 			maxPage = _maxpage(file_idx)
 			page=0
 
@@ -1217,34 +1302,46 @@ def main(stdscr):
 			gui.clear()
 			curses.noecho()
 
-		elif ch == ord('T'):
-			VIEW_MODE = 'todo'; page = 0; maxPage = _maxpage(file_idx)
-
-		elif ch == ord('D'):
-			VIEW_MODE = 'done'; page = 0; maxPage = _maxpage(file_idx)
-
-		elif ch in [ord('A'), ord('a')]:
-			VIEW_MODE = 'all';  page = 0; maxPage = _maxpage(file_idx)
-
-		elif ch == ord('V'):
-			modes = ['all', 'todo', 'done']
-			VIEW_MODE = modes[(modes.index(VIEW_MODE) + 1) % len(modes)]
-			page = 0; maxPage = _maxpage(file_idx)
-
-		elif ch == ord('N'):
-			notes = find_notes_file(files_with_path[file_idx])
-			if notes:
-				with tempfile.NamedTemporaryFile(mode='w', suffix='.fl', delete=False, prefix='bf_') as tf:
-					tf.write(f"^{filelist_with_path}\n\n{notes}\n")
-					tmppath = tf.name
-				os.environ['BF_ZOOM_SOURCE'] = files_with_path[file_idx]
-				os.system(f"{sys.argv[0]} {tmppath}")
-				try: os.unlink(tmppath)
-				except: pass
-				exit()
+		elif ch == ord('t'):
+			if VIEW_MODE == 'todo':
+				VIEW_MODE = _prev_view
 			else:
-				printBIG("Nah :)")
-				gui.clear()
+				_prev_view = VIEW_MODE; VIEW_MODE = 'todo'
+			_notes_mode = False; page = 0; maxPage = _maxpage(file_idx)
+
+		elif ch == ord('d'):
+			if VIEW_MODE == 'done':
+				VIEW_MODE = _prev_view
+			else:
+				_prev_view = VIEW_MODE; VIEW_MODE = 'done'
+			_notes_mode = False; page = 0; maxPage = _maxpage(file_idx)
+
+		elif ch in [ord('a')]:
+			VIEW_MODE = 'all'; _prev_view = 'all'
+			_notes_mode = False; page = 0; maxPage = _maxpage(file_idx)
+
+		elif ch == ord('v'):
+			modes = ['all', 'todo', 'done']
+			_prev_view = VIEW_MODE
+			VIEW_MODE = modes[(modes.index(VIEW_MODE) + 1) % len(modes)]
+			_notes_mode = False; page = 0; maxPage = _maxpage(file_idx)
+
+		elif ch == ord('n'):
+			if _notes_mode:
+				_notes_mode = False
+				VIEW_MODE = _prev_notes_view
+				page = 0; maxPage = _maxpage(file_idx)
+			else:
+				nf = find_notes_file(files_with_path[file_idx])
+				if nf:
+					_notes_file    = nf
+					_notes_content = get_content_from_file(nf)
+					_prev_notes_view = VIEW_MODE
+					_notes_mode    = True
+					page = 0; maxPage = _maxpage(file_idx)
+				else:
+					printBIG("Nah :)")
+					gui.clear()
 
 		else:
 			# dynamic filter keys from filters.conf
