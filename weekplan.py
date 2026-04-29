@@ -1,4 +1,3 @@
-## weeklyPlanner.py
 # - integrate: sync/mg 2Ds <> cal  --  terminal <> fon
 # - KISS ( complex-- )
 # - parse tasks, mk sum + .ics events

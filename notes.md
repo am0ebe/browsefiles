@@ -1,6 +1,6 @@
 # pr/browsefiles
 
-code: `~/gopro/go/pr/kb/browsefiles/browsefiles.py` (symlinked: `~/bin/browsefiles.py`)
+code: `~/gopro/go/pr/browsefiles/browsefiles.py` (symlinked: `~/bin/browsefiles.py`)
 filelists: `~/dotfiles/.config/user/browsefiles/go/`
 aliases: te2 ag2 ml2 sy2 pr2 le2 aa2 + ‼️ variants
 
