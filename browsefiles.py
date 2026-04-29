@@ -30,23 +30,69 @@ from glob import glob as glob #	wildcards in filenames. https://docs.python.ofro
 from pathlib import Path
 from pprint import pprint as pp
 import tempfile
+import datetime
 
 x = 0
 y = 0
 COLOR_THEME = 5
 GLOBAL_SEARCH = ""
+CURRENT_FILTER = ""
+HEADER_SIZE = 4
 
-#‼️	add obstacle 🚧, reflect 🪞, try&error/experiment 🧪,❓ for Q, ⁉️ ...,🔍 research/inspect,
-# 🖥️ / 📱 ?
-experiment_symb = "🧪"
-wait_feedback_symb = "👤"
-important_symb = "‼️"
-urgent_symb = "⏰"
+DATE_RE    = re.compile(r'@(\d{4}|\d{6})(?!\d|\w)')
+MD_LINK_RE = re.compile(r'\[([^\]]+)\]\(([^)]+)\)')
 
-first = True
+_zoom_source = ''  # file path that brought us into this filelist (for zoom-out)
+
+FILTER_CONFIG = os.path.expanduser("~/.config/user/browsefiles/filters.conf")
+FILTERS = {}  # key_char -> fdef dict (aliases share same dict object)
+
 editor = "subl"
 parent = ""
 filelist = ""
+
+# ---------------------------------------------------------------------------
+# filter config
+
+def parse_filter_config(path):
+	filters = {}
+	if not os.path.exists(path):
+		return filters
+	with open(path) as f:
+		for line in f:
+			line = line.strip()
+			if not line or line.startswith('#'):
+				continue
+			parts = line.split('|', 2)
+			if len(parts) < 2:
+				continue
+			keys_str  = parts[0].strip()
+			pat_str   = parts[1].strip()
+			desc      = parts[2].strip() if len(parts) > 2 else pat_str
+
+			patterns = []
+			section_kw = None
+			for token in pat_str.split():
+				if token.startswith('§'):
+					section_kw = token[1:]
+				else:
+					patterns.append(token)
+
+			label = " ".join(patterns) if patterns else (section_kw or desc)
+
+			fdef = {
+				'patterns':   patterns,
+				'section_kw': section_kw,
+				'label':      label,
+				'desc':       desc,
+			}
+			for key_char in keys_str.split(','):
+				key_char = key_char.strip()
+				if key_char:
+					filters[key_char] = fdef  # aliases share same dict object
+	return filters
+
+# ---------------------------------------------------------------------------
 
 def isEditable(file_abs):
 
@@ -66,7 +112,7 @@ def isEditable(file_abs):
 
 def make_abs_filepath(line):
 
-	line = os.path.expanduser(line.strip()) # remove trailing newline + append ~
+	line = os.path.expanduser(line.strip()) # remove trailing newline + expand ~
 	if os.sep not in line:
 		line = os.getcwd() + os.sep + line # add cwd to files without path
 
@@ -99,7 +145,6 @@ def parse_filelist(filelist_):
 	os.chdir(cwd) #! then kids without abspath will be found relative to filelist dir
 	filelist = os.path.basename(filelist_with_path)
 
-	# print(f"open filelist: {filelist_with_path}")
 	with open(filelist_with_path) as f:
 		lines = f.readlines()
 
@@ -111,10 +156,10 @@ def parse_filelist(filelist_):
 				parent=make_abs_filepath(line[1:-1])[0] #quickfix: abs: glob: always returns list
 				continue
 
-			# split line and xtract second file as kid and store in files_with_kid
-			kid=" "
+			# split line and extract second token as kid filelist path
+			kid = [""]  # sentinel: no kid
 			if " " in line:
-				line,kid = line.split(" ", 1)
+				line, kid = line.split(" ", 1)
 				kid = make_abs_filepath(kid)
 
 			line = make_abs_filepath(line)
@@ -132,31 +177,36 @@ def parse_filelist(filelist_):
 	files_with_kid=list(list(zip(*sort_together))[0])
 	files_with_path=list(list(zip(*sort_together))[1])
 
-
 	# put todos first, while preserving the order of the rest
-	# Separate "todo" and non-"todo" items
 	todo_files_with_path = [f for f in files_with_path if "todo" in f]
-	todo_files_with_kid = [files_with_kid[idx] for idx, f in enumerate(files_with_path) if "todo" in f]
+	todo_files_with_kid  = [files_with_kid[idx] for idx, f in enumerate(files_with_path) if "todo" in f]
 
 	non_todo_files_with_path = [f for f in files_with_path if "todo" not in f]
-	non_todo_files_with_kid = [files_with_kid[idx] for idx, f in enumerate(files_with_path) if "todo" not in f]
+	non_todo_files_with_kid  = [files_with_kid[idx] for idx, f in enumerate(files_with_path) if "todo" not in f]
 
-	# Concatenate "todo" items with non-"todo" items
 	files_with_path = todo_files_with_path + non_todo_files_with_path
-	files_with_kid = todo_files_with_kid + non_todo_files_with_kid
+	files_with_kid  = todo_files_with_kid  + non_todo_files_with_kid
 
 	files = [f.split('/')[-1] + ('/' if os.path.isdir(f) else '') for f in files_with_path]
 
-	contents=[]
-	for file in files_with_path:
+	contents = [None] * len(files_with_path)  # lazy: loaded on first access via get_content()
+
+_nav_link_re = re.compile(r'^\[.+?\]\(.+?\)\s*$')
+
+def get_content(file_idx):
+	if contents[file_idx] is None:
+		file = files_with_path[file_idx]
 		if os.path.isdir(file):
-			entries = sorted(os.listdir(file))
-			contents.append(entries)
+			contents[file_idx] = sorted(os.listdir(file))
 		else:
-			with open( file ) as f:
-				lines = list( f )
-				lines = [x.rstrip() for x in lines] #remove trailing '\n'
-				contents.append( lines )
+			with open(file) as f:
+				lines = [l.rstrip() for l in f]
+			# strip standalone nav links from top (e.g. [top](../all.md))
+			for _ in range(2):
+				if lines and _nav_link_re.match(lines[0]):
+					lines.pop(0)
+			contents[file_idx] = lines
+	return contents[file_idx]
 
 def init_curses():
 	global gui, contents, maxPage, nColor
@@ -175,13 +225,13 @@ def init_curses():
 	curses.init_pair(nColor, curses.COLOR_YELLOW, curses.COLOR_BLACK); nColor +=1
 	curses.init_pair(nColor, curses.COLOR_WHITE, curses.COLOR_BLACK); nColor +=1  # noqa: E702
 	curses.init_pair(nColor, curses.COLOR_BLUE, curses.COLOR_BLACK); nColor +=1
-	# curses.init_pair(nColor, curses.COLOR_BLACK, curses.COLOR_WHITE); nColor += 1
 
-	maxPage = len(contents[0]) // curses.LINES
+	maxPage = len(get_content(0)) // curses.LINES
 
 	global MD_ATTR
 	MD_ATTR = {
-		Token.Generic.Heading:    curses.color_pair(5) | curses.A_BOLD,  # yellow bold
+		Token.Generic.Heading:    curses.color_pair(5) | curses.A_BOLD,  # yellow bold — H1
+		Token.Generic.Subheading: curses.color_pair(5) | curses.A_BOLD,  # yellow bold — H2+
 		Token.Generic.Strong:     curses.A_BOLD,
 		Token.Generic.Emph:       curses.A_UNDERLINE,
 		Token.Literal.String:     curses.color_pair(3),                  # green — inline code
@@ -203,29 +253,63 @@ def edit(*args):
 	os.system(f"{editor} {sub_args}")
 
 def printHeader(page, maxPage, file_idx, nfiles):
-	global HEADER_SIZE
-	HEADER_SIZE=4
-
+	W = curses.COLS - 1
 	has_parent = bool(parent)
-	has_kid = files_with_kid[file_idx] != " "
-	nav = ("←" if has_parent else " ") + " " + ("→" if has_kid else " ")
+	has_kid = files_with_kid[file_idx] != ""
+	nav = ("⇧" if has_parent else " ") + " " + ("⇩" if has_kid else " ")
 
-	s1=f"####################### file [{file_idx+1}/{nfiles}] ###"
+	s1 = f"## file [{file_idx+1}/{nfiles}] "
+	s1 += "#" * max(0, W - len(s1))
 	p(s1)
 
-	s2_1=f"# {nav}   "
-	p(s2_1,0,False)
+	p(f"# {nav}  ", 0, False)
+	printFileStripInline(file_idx)
 
-	s2_2=files[file_idx]
-	p(s2_2,color(COLOR_THEME),False)
-
-	s2_3=(len(s1)-(len(s2_1)+len(s2_2)+1))*' '+"#"
-	p(s2_3,0,True)
-
-	s3=f"####################### page [{page+1}/{maxPage+1}] "
-	s3+="#"*(len(s1)-len(s3))
+	s3 = f"## page [{page+1}/{maxPage+1}] "
+	s3 += "#" * max(0, W - len(s3))
 	p(s3)
 	p()
+
+def printFileStripInline(file_idx):
+	avail = curses.COLS - 1 - x  # remaining cols on current line
+
+	all_strs = [f"[{files[i]}]" if i == file_idx else f" {files[i]}" for i in range(len(files))]
+	total_w  = sum(len(s) for s in all_strs)
+
+	if total_w <= avail:
+		for i, s in enumerate(all_strs):
+			p(s, color(COLOR_THEME) | curses.A_BOLD if i == file_idx else 0, False)
+		p("")
+		return
+
+	# window centred on current file; fill with neighbours until budget runs out
+	EL     = "…"
+	cur_s  = all_strs[file_idx]
+	budget = avail - len(cur_s)
+
+	left_s  = [all_strs[i] for i in range(file_idx - 1, -1, -1)]
+	right_s = [all_strs[i] for i in range(file_idx + 1, len(files))]
+	incl_l, incl_r, li, ri = [], [], 0, 0
+
+	while budget > 0:
+		grew = False
+		if ri < len(right_s):
+			cost = len(right_s[ri]) + (1 if ri + 1 < len(right_s) else 0)
+			if cost <= budget:
+				incl_r.append(right_s[ri]); budget -= len(right_s[ri]); ri += 1; grew = True
+		if li < len(left_s):
+			cost = len(left_s[li]) + (1 if li + 1 < len(left_s) else 0)
+			if cost <= budget:
+				incl_l.append(left_s[li]); budget -= len(left_s[li]); li += 1; grew = True
+		if not grew:
+			break
+
+	if li < len(left_s):  p(EL, 0, False)
+	for s in reversed(incl_l): p(s, 0, False)
+	p(cur_s, color(COLOR_THEME) | curses.A_BOLD, False)
+	for s in incl_r: p(s, 0, False)
+	if ri < len(right_s):  p(EL, 0, False)
+	p("")
 
 def color(cid=-1):
 	if cid == -1:
@@ -269,6 +353,9 @@ def p(msg="", attr=0, add_newline=True, highlight=False):
 		x = 0
 		y += 1
 
+# ---------------------------------------------------------------------------
+# search
+
 def find(query=""):
 
 	if query == "":
@@ -278,14 +365,11 @@ def find(query=""):
 			return
 
 	result = []
-	for file_idx,content in enumerate(contents):
-		for lineno,line in enumerate(content,1):
+	for file_idx in range(len(files)):
+		for lineno, line in enumerate(get_content(file_idx), 1):
 
 			positions=[]
-			# store all lineindices in a list of tuples
-			# escape string to also search for special chars like '+' or '*'
-			# s.translate(s.maketrans({"-":  r"\-","]":  r"\]", ... )
-			for m in re.finditer(re.escape(query), line, re.MULTILINE | re.IGNORECASE):
+			for m in re.finditer(re.escape(query), line, re.IGNORECASE):
 				positions.append( (m.start(), m.end()) )
 
 			if positions:
@@ -293,11 +377,201 @@ def find(query=""):
 
 	return result
 
+def find_any(queries):
+	# all matches across all queries on each line; positions sorted
+	result = []
+	for file_idx in range(len(files)):
+		for lineno, line in enumerate(get_content(file_idx), 1):
+			positions = []
+			for q in queries:
+				for m in re.finditer(re.escape(q), line, re.IGNORECASE):
+					positions.append((m.start(), m.end()))
+			if positions:
+				positions.sort()
+				result.append([file_idx, lineno, line, positions])
+	return result or None
+
+def find_by_section(section_kw, patterns=None):
+	# match lines under a section header containing section_kw,
+	# or that explicitly contain any of patterns.
+	# section headers containing any pattern also trigger the section.
+	if patterns is None:
+		patterns = []
+	result = []
+	for file_idx in range(len(files)):
+		in_section = False
+		for lineno, line in enumerate(get_content(file_idx), 1):
+			stripped = line.strip()
+			if not stripped:
+				continue
+			if stripped.startswith("#"):
+				lower = stripped.lower()
+				in_section = section_kw.lower() in lower
+				if not in_section and patterns:
+					in_section = any(p in stripped for p in patterns)
+				continue
+			has_explicit = patterns and any(p in line for p in patterns)
+			if not has_explicit and not in_section:
+				continue
+			pos = []
+			for p in patterns:
+				for m in re.finditer(re.escape(p), line):
+					pos.append((m.start(), m.end()))
+			pos.sort()
+			if not pos:
+				pos = [(0, 0)]  # positional match — no explicit symbol on this line
+			result.append([file_idx, lineno, line, pos])
+	return result or None
+
+def parse_date_tag(digits):
+	today = datetime.date.today()
+	try:
+		if len(digits) == 4:
+			mm, dd = int(digits[:2]), int(digits[2:])
+			d = datetime.date(today.year, mm, dd)
+			if d < today:  # past this year → assume next year
+				d = datetime.date(today.year + 1, mm, dd)
+			return d
+		elif len(digits) == 6:
+			yy, mm, dd = int(digits[:2]), int(digits[2:4]), int(digits[4:])
+			return datetime.date(2000 + yy, mm, dd)
+	except ValueError:
+		return None
+
+def find_urgent(patterns):
+	today    = datetime.date.today()
+	one_week = today + datetime.timedelta(days=7)
+	result = []
+	for file_idx in range(len(files)):
+		for lineno, line in enumerate(get_content(file_idx), 1):
+			positions = []
+			for sym in patterns:
+				for m in re.finditer(re.escape(sym), line, re.IGNORECASE):
+					positions.append((m.start(), m.end()))
+			imminent = False
+			for m in DATE_RE.finditer(line):
+				positions.append((m.start(), m.end()))
+				d = parse_date_tag(m.group(1))
+				if d and d <= one_week:
+					imminent = True
+			if not positions:
+				continue
+			positions.sort()
+			display = line + "  ❗" if imminent else line  # append marker; positions unchanged
+			result.append([file_idx, lineno, display, positions])
+	return result or None
+
+def get_indent(line):
+	return len(line) - len(line.lstrip())
+
+def expand_with_context(result):
+	if not result:
+		return result
+	# group match entries by file then lineno
+	by_file = {}
+	for entry in result:
+		fi, ln = entry[0], entry[1]
+		by_file.setdefault(fi, {})[ln] = entry
+
+	expanded = []
+	for fi in sorted(by_file.keys()):
+		content    = get_content(fi)
+		match_map  = by_file[fi]
+		all_linenos = set(match_map)
+
+		for ln in list(match_map):
+			idx  = ln - 1
+			if not (0 <= idx < len(content)):
+				continue
+			line  = content[idx]
+			mind  = get_indent(line)
+			is_hd = line.lstrip().startswith('#')
+
+			# parent: nearest ancestor (less indent, or a heading)
+			if not is_hd:
+				for i in range(idx - 1, -1, -1):
+					prev = content[i]
+					if not prev.strip():
+						continue
+					if prev.lstrip().startswith('#') or get_indent(prev) < mind:
+						all_linenos.add(i + 1)
+						break
+
+			# descendants
+			if is_hd:
+				hlevel = len(line) - len(line.lstrip('#'))
+				for i in range(idx + 1, min(idx + 51, len(content))):  # cap at 50
+					cl = content[i]
+					if not cl.strip():
+						continue
+					if cl.lstrip().startswith('#') and len(cl) - len(cl.lstrip('#')) <= hlevel:
+						break
+					all_linenos.add(i + 1)
+			else:
+				for i in range(idx + 1, len(content)):
+					cl = content[i]
+					if not cl.strip():
+						continue
+					if get_indent(cl) <= mind:
+						break
+					all_linenos.add(i + 1)
+
+		for ln in sorted(all_linenos):
+			if ln in match_map:
+				expanded.append(match_map[ln])
+			else:
+				raw = content[ln - 1] if ln - 1 < len(content) else ""
+				expanded.append([fi, ln, raw, [(0, 0)], True])  # True = context line
+
+	return expanded or None
+
+def follow_link(source_file, line):
+	m = MD_LINK_RE.search(line)
+	if not m:
+		return
+	url = m.group(2)
+	if url.startswith(('http://', 'https://')):
+		os.system(f"xdg-open '{url}' &")
+	else:
+		base   = os.path.dirname(source_file)
+		target = str(Path(os.path.join(base, url)).resolve())
+		if os.path.isfile(target):
+			edit(target)
+
+def find_links_in_file(file_idx):
+	result = []
+	for lineno, line in enumerate(get_content(file_idx), 1):
+		for m in MD_LINK_RE.finditer(line):
+			result.append([file_idx, lineno, line, [(m.start(), m.end())]])
+	return result or None
+
+def find_filter(fdef):
+	if fdef['section_kw']:
+		res = find_by_section(fdef['section_kw'], fdef['patterns'])
+	elif "⏰" in fdef['patterns']:
+		res = find_urgent(fdef['patterns'])  # auto: ⏰ → date-aware search
+	elif fdef['patterns']:
+		res = find_any(fdef['patterns'])
+	else:
+		return None
+	return expand_with_context(res) if res else None
+
+def run_filter(fdef):
+	global CURRENT_FILTER
+	CURRENT_FILTER = fdef['label']
+	res = find_filter(fdef)
+	if res:
+		Menu(res)
+	else:
+		printBIG("Nah!")
+	CURRENT_FILTER = ""  # clear when back in browse mode
+	gui.clear()
+
+# ---------------------------------------------------------------------------
+
 class Menu:
 	def __init__(self, result):
-		self.res = result 	# == file_idx, lineno, line, positions
-		beg, end = result[0][3][0]
-		self.query = result[0][2][beg:end]
+		self.res = list(result)  # copy — don't mutate caller's list
 
 		self.current_row = -1
 		self.lines_page = curses.LINES - 1
@@ -333,8 +607,8 @@ class Menu:
 		y = x = 0
 		idx = self.page * self.lines_page
 
-		p(f"##### page [{self.page}/{self.maxPage}] #####", curses.A_BOLD)
-		# p(f"##### page [{self.page}/{self.maxPage}] ### cur_row: {self.current_row} ### nrow: {self.nrow} ### lines_page: {self.lines_page} ### idx: {idx} ### curpage1: {self.current_row / self.lines_page} ## curpage2: {int( self.current_row / (self.lines_page))}", curses.A_BOLD)
+		filter_tag = f" [{CURRENT_FILTER}]" if CURRENT_FILTER else ""
+		p(f"##### page [{self.page}/{self.maxPage}]{filter_tag} #####", curses.A_BOLD)
 
 		while idx < (self.page+1) * self.lines_page and idx < self.nrow:
 			r = self.res[idx]
@@ -343,8 +617,11 @@ class Menu:
 				p(r, curses.A_BOLD)
 				continue
 
+			is_ctx = len(r) > 4 and r[4]
 			if idx == self.current_row:
 				attr = curses.A_REVERSE | curses.A_BOLD
+			elif is_ctx:
+				attr = curses.A_DIM
 			else:
 				attr = curses.A_NORMAL
 
@@ -358,15 +635,11 @@ class Menu:
 
 			last_lend = 0
 			for lbeg,lend in positions:
-				s = line[last_lend:lbeg]
-				p( s, attr, False )
-				p( self.query, attr | color(COLOR_THEME), False )
+				p( line[last_lend:lbeg], attr, False )
+				p( line[lbeg:lend], attr | color(COLOR_THEME), False )
 				last_lend = lend
 
-			x = lend + len_lineno
 			p(line[lend:], attr)
-			# p(line,attr)
-			# p(r)
 
 			idx += 1
 
@@ -450,7 +723,6 @@ class Menu:
 				row = self.res[self.current_row][1]
 				col = self.res[self.current_row][3][0][0]+1
 				edit( file, row, col)
-				# exit()
 
 			elif ch == ord('E'):
 				done = []
@@ -472,6 +744,10 @@ class Menu:
 
 				edit(*args)
 				exit()
+
+			elif ch == ord('o'):
+				cur = self.res[self.current_row]
+				follow_link(files_with_path[cur[0]], cur[2])
 
 			elif ch == ord('c'):
 
@@ -505,50 +781,70 @@ def print_filelist(file_idx):
 	gui.clear()
 
 def print_help():
-	global x, y, important_symb
+	global x, y
 	gui.clear()
 	y,x=printBIG2(" __ HELP  __ ")
 	x=curses.COLS//3
 	p("")
 	x=curses.COLS//3
-	p("?, h			- print this help",color(COLOR_THEME))
+	p("?, h         - print this help",color(COLOR_THEME))
 	x=curses.COLS//3
-	# p("a,w,s,d 	- navigate",color(COLOR_THEME))
-	# x=curses.COLS//3
-	p("←↑↓→			- prev/next file",color(COLOR_THEME))
+	p("←→           - prev/next file",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("PgUp/PgDn		- scroll page",color(COLOR_THEME))
+	p("↑↓           - scroll page up/down",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("+/= ctrl+↑		- zoom out",color(COLOR_THEME))
+	p("PgUp/PgDn    - scroll page",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("-/_ ctrl+↓		- zoom in",color(COLOR_THEME))
+	p("+/= ctrl+↑   - ⇧ zoom out",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("f,/		- find",color(COLOR_THEME))
+	p("-/_ ctrl+↓   - ⇩ zoom in",color(COLOR_THEME))
 	x=curses.COLS//3
-	p(f"1,2|m,3,4		- show {wait_feedback_symb} ,{important_symb} ,{urgent_symb} ,{experiment_symb}",color(COLOR_THEME))
+	p("[/]          - ⇦/⇨ prev/next sibling filelist",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("f1..10	- jump to file",color(COLOR_THEME))
+	p("f,/          - find (with context expansion)",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("j		- show file list",color(COLOR_THEME))
+	p("L            - list links in current file  (o=follow in results)",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("c			- copy selected line",color(COLOR_THEME))
+	p("--- filters (filters.conf) ---",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("x, v 			- copy selected line and exit",color(COLOR_THEME))
+
+	shown = set()
+	for key_char in sorted(FILTERS.keys(), key=lambda k: (not k.isdigit(), k)):
+		fdef = FILTERS[key_char]
+		fid  = id(fdef)
+		if fid in shown:
+			continue
+		shown.add(fid)
+		aliases = sorted([k for k,v in FILTERS.items() if v is fdef],
+		                  key=lambda k: (not k.isdigit(), k))
+		key_str = ", ".join(aliases)
+		x=curses.COLS//3
+		p(f"{key_str:<10} - {fdef['label']}  ({fdef['desc']})",color(COLOR_THEME))
+
 	x=curses.COLS//3
-	p("e 			- edit current file",color(COLOR_THEME))
+	p("--- ---",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("w 			- edit current file and exit",color(COLOR_THEME))
+	p("f1..10       - jump to file",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("E 			- edit all files",color(COLOR_THEME))
+	p("j            - show file list",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("l 			- edit file list",color(COLOR_THEME))
+	p("c            - copy selected line",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("p 			- edit source",color(COLOR_THEME))
+	p("x, v         - copy selected line and exit",color(COLOR_THEME))
+	x=curses.COLS//3
+	p("e            - edit current file",color(COLOR_THEME))
+	x=curses.COLS//3
+	p("w            - edit current file and exit",color(COLOR_THEME))
+	x=curses.COLS//3
+	p("E            - edit all files",color(COLOR_THEME))
+	x=curses.COLS//3
+	p("l            - edit file list",color(COLOR_THEME))
+	x=curses.COLS//3
+	p("p            - edit source",color(COLOR_THEME))
 	x=curses.COLS//3
 
 	gui.getch()
 	gui.clear()
-	# GLOBAL_SEARCH=""
 
 def printBIG(str):
 
@@ -558,21 +854,17 @@ def printBIG(str):
 	x = curses.COLS // 2 - 20
 
 	fonts = ["shadow","standard","3-d", "block","small","ogre","chunky"]
-	# fonts = pyfiglet.FigletFont.getFonts()
 	font = random.choice(fonts)
 	f = pyfiglet.Figlet(font=font)
 	ss=f.renderText(str).split("\n")
-	# maxlen = max(len(ele) for ele in ss)
 
-	q=20
+	q=10  # 1s at 0.1s/frame
 	while q:
 		q-=1
 		y_off=-3
 		for s in ss:
 			gui.addstr(y+y_off,x,s,color())
 			y_off+=1
-		gui.addstr(curses.LINES-1,0,f"{font}, y:{y}, x:{x}, cols:{curses.COLS}",color())
-
 		gui.refresh()
 		time.sleep(0.1)
 
@@ -582,17 +874,18 @@ def printBIG2(str,y=0,x=0):
 	font = random.choice(fonts)
 	f = pyfiglet.Figlet(font=font)
 	ss=f.renderText(str).split("\n")
-	# maxlen = max(len(ele) for ele in ss)
 
 	for s in ss:
 		gui.addstr(y,x,s,color())
 		y+=1
 
-	gui.addstr(curses.LINES-1,0,f"{font}, y:{y}, x:{x}, cols:{curses.COLS}",color())
 	return y,x
 
 def zoom_in(file_idx):
 	kid = files_with_kid[file_idx]
+	cur_file = files_with_path[file_idx]
+	os.environ['BF_INITIAL_FILE'] = cur_file   # child: select this file on zoom-back-out
+	os.environ['BF_ZOOM_SOURCE']  = cur_file   # child stores this; used when it zooms out
 	if kid.startswith("__dir__:"):
 		dirpath = kid[8:]
 		with tempfile.NamedTemporaryFile(mode='w', suffix='.fl', delete=False, prefix='bf_') as tf:
@@ -602,66 +895,93 @@ def zoom_in(file_idx):
 		try: os.unlink(tmppath)
 		except: pass
 		exit()
-	elif kid != " ":
+	elif kid != "":
 		os.system(sys.argv[0] + " " + kid)
 		exit()
 
 def zoom_out():
 	if parent:
-		os.system(f"{sys.argv[0]} {parent}") #recursion.
+		# _zoom_source = the file in the parent that zoomed us in here → select it on return
+		os.environ['BF_INITIAL_FILE'] = _zoom_source if _zoom_source else filelist_with_path
+		os.system(f"{sys.argv[0]} {parent}")
 		exit()
 
 def zoom_side(isRight=False):
-	# global gui,x,y
-	# x=0
-	# y=0
-	# global parent, files_with_path, files_with_kid, filelist_with_path
-	# gui.getch()
-
 	if not parent:
 		return
 
-	cur_filelist = filelist_with_path
-	# print(f"files_with_kid: {files_with_kid}")
-	# p(f"parent!!: {parent}")
-	parse_filelist(parent) #resets global: files_with_path, files_with_kid, parent, filelist
+	cur = filelist_with_path
+	parent_dir = os.path.dirname(parent)
+
+	# read parent filelist directly to collect kid filelist paths (no global mutation)
+	kids = []
 	try:
-		# p(f"files_with_kid: {files_with_kid}")
-		# gui.getch()
+		with open(parent) as f:
+			for line in f:
+				line = line.strip()
+				if not line or line.startswith('#') or line.startswith('^'):
+					continue
+				if ' ' in line:
+					_, kid = line.split(' ', 1)
+					kid = kid.strip()
+					kid = os.path.expanduser(kid)
+					if not os.path.isabs(kid):
+						kid = os.path.join(parent_dir, kid)
+					kid = str(Path(kid).resolve())
+					if os.path.isfile(kid) and kid not in kids:
+						kids.append(kid)
+	except OSError:
+		return
 
-		if isRight:
-			files_with_kid.reverse()
-		idx = files_with_kid.index(cur_filelist) - 1
+	if cur not in kids or len(kids) < 2:
+		return
 
-
-		print(f"found {files_with_kid[idx]}")
-		parse_filelist(files_with_kid[idx]) # go left
-
-	except Exception as e:
-		print(f"didnt find {cur_filelist}")
-		raise e
-		# parse_filelist(cur_filelist)
+	idx = kids.index(cur)
+	sibling = kids[(idx + (1 if isRight else -1)) % len(kids)]
+	os.system(f"{sys.argv[0]} {sibling}")
+	exit()
 
 def main(stdscr):
 
-	global x, y, gui, maxPage, GLOBAL_SEARCH, important_symb
+	global x, y, gui, maxPage, GLOBAL_SEARCH, CURRENT_FILTER, _zoom_source
 
 	gui = stdscr
 
 	parse_filelist(sys.argv[1])
-	if( len(sys.argv) > 1 ):
-		GLOBAL_SEARCH=" ".join(sys.argv[2:])
+	GLOBAL_SEARCH = " ".join(sys.argv[2:])
+	_zoom_source  = os.environ.pop('BF_ZOOM_SOURCE', '')  # file that zoomed us in here
 
 	init_curses()
 
-	file_idx=0
-	page=0
+	file_idx = 0
+	page = 0
+
+	# restore selection across zoom-in / zoom-out
+	initial_file = os.environ.pop('BF_INITIAL_FILE', None)
+	if initial_file:
+		basename = os.path.basename(initial_file)
+		# 1. match by file basename (zoom-in, or zoom-out via BF_ZOOM_SOURCE)
+		found = next((i for i, f in enumerate(files) if f.rstrip('/') == basename), None)
+		# 2. match by exact path in files_with_path
+		if found is None:
+			found = next((i for i, fp in enumerate(files_with_path) if fp == initial_file), None)
+		# 3. match by kid filelist path (old zoom-out fallback)
+		if found is None:
+			ki_base = os.path.basename(initial_file)
+			found = next(
+				(i for i, k in enumerate(files_with_kid)
+				 if k == initial_file or os.path.basename(k) == ki_base),
+				None
+			)
+		if found is not None:
+			file_idx = found
+			maxPage = len(get_content(file_idx)) // curses.LINES
 
 	while True:
 		x=y=0
 
 		printHeader(page, maxPage, file_idx, len(files))
-		printPage(page,contents[file_idx], HEADER_SIZE)
+		printPage(page, get_content(file_idx), HEADER_SIZE)
 
 		if GLOBAL_SEARCH:
 			ch = ord('f') #find
@@ -696,14 +1016,16 @@ def main(stdscr):
 			exit()
 
 		elif ch in [ curses.KEY_UP ]:
-			file_idx = (file_idx - 1) % len(files)
-			maxPage = len(contents[file_idx]) // curses.LINES
-			page=0
+			if page > 0:
+				page -= 1
+			else:
+				page = maxPage
 
 		elif ch in [ curses.KEY_DOWN ]:
-			file_idx = (file_idx + 1) % len(files)
-			maxPage = len(contents[file_idx]) // curses.LINES
-			page=0
+			if page < maxPage:
+				page += 1
+			else:
+				page = 0
 
 		elif ch in [ curses.KEY_PPAGE ]:
 			if page > 0:
@@ -719,12 +1041,12 @@ def main(stdscr):
 
 		elif ch in [ curses.KEY_LEFT ]:
 			file_idx = (file_idx - 1) % len(files)
-			maxPage = len(contents[file_idx]) // curses.LINES
+			maxPage = len(get_content(file_idx)) // curses.LINES
 			page=0
 
 		elif ch in [ curses.KEY_RIGHT ]:
 			file_idx = (file_idx + 1) % len(files)
-			maxPage = len(contents[file_idx]) // curses.LINES
+			maxPage = len(get_content(file_idx)) // curses.LINES
 			page=0
 
 		elif ch in [ ord('+'), ord('='), 337, 567 ] : # shift/ctrl+up
@@ -732,6 +1054,12 @@ def main(stdscr):
 
 		elif ch in [ ord('-'), ord('_'), 336, 526 ] : # shift/ctrl+down
 			zoom_in(file_idx)
+
+		elif ch in [ ord('[') ]:
+			zoom_side(isRight=False)
+
+		elif ch in [ ord(']') ]:
+			zoom_side(isRight=True)
 
 		elif ch == curses.KEY_HOME:
 			page=0
@@ -749,72 +1077,73 @@ def main(stdscr):
 			y=0
 
 			if GLOBAL_SEARCH:
+				CURRENT_FILTER = GLOBAL_SEARCH
 				res=find(GLOBAL_SEARCH)
 				GLOBAL_SEARCH = ""
 			else:
 				res=find()
 
 			if res:
-				Menu(res)
+				Menu(expand_with_context(res) or res)
 			else:
 				printBIG("Nah!")
 
+			CURRENT_FILTER = ""
 			gui.clear()
 			curses.noecho()
 
-		elif ch in [ord('1')]:
-			GLOBAL_SEARCH=wait_feedback_symb
-		elif ch in [ord('2'), ord('m')]:
-			GLOBAL_SEARCH=important_symb
-		elif ch in [ord('3')]:
-			GLOBAL_SEARCH=urgent_symb
-		elif ch in [ord('4')]:
-			GLOBAL_SEARCH=experiment_symb
-
-		elif ch == curses.KEY_F1:
-			file_idx=0
-			if file_idx >= len(files)-1:
-				file_idx = len(files)-1
-		elif ch == curses.KEY_F2:
-			file_idx=1
-			if file_idx >= len(files)-1:
-				file_idx = len(files)-1
-		elif ch == curses.KEY_F3:
-			file_idx=2
-			if file_idx >= len(files)-1:
-				file_idx = len(files)-1
-		elif ch == curses.KEY_F4:
-			file_idx=3
-			if file_idx >= len(files)-1:
-				file_idx = len(files)-1
-		elif ch == curses.KEY_F5:
-			file_idx=4
-			if file_idx >= len(files)-1:
-				file_idx = len(files)-1
-		elif ch == curses.KEY_F6:
-			file_idx=5
-			if file_idx >= len(files)-1:
-				file_idx = len(files)-1
-		elif ch == curses.KEY_F7:
-			file_idx=6
-			if file_idx >= len(files)-1:
-				file_idx = len(files)-1
-		elif ch == curses.KEY_F8:
-			file_idx=7
-			if file_idx >= len(files)-1:
-				file_idx = len(files)-1
-		elif ch == curses.KEY_F9:
-			file_idx=len(files)-1
-		elif ch == curses.KEY_F10:
-			file_idx=len(files)-1
-		elif ch in [ ord('j'), curses.KEY_DC ]:
-			#tab - 9
-			#bkscp 263
-			#del / curses.KEY_DC 330
-			#space 32
-			print_filelist(file_idx)
 		else:
-			pass
+			# dynamic filter keys from filters.conf
+			ch_char = chr(ch) if 32 <= ch < 127 else None
+			if ch_char == 'L':
+				CURRENT_FILTER = "links"
+				res = find_links_in_file(file_idx)
+				if res:
+					Menu(res)
+				else:
+					printBIG("No links")
+				CURRENT_FILTER = ""
+				gui.clear()
+			elif ch_char and ch_char in FILTERS:
+				run_filter(FILTERS[ch_char])
+			elif ch == curses.KEY_F1:
+				file_idx=0
+				if file_idx >= len(files)-1:
+					file_idx = len(files)-1
+			elif ch == curses.KEY_F2:
+				file_idx=1
+				if file_idx >= len(files)-1:
+					file_idx = len(files)-1
+			elif ch == curses.KEY_F3:
+				file_idx=2
+				if file_idx >= len(files)-1:
+					file_idx = len(files)-1
+			elif ch == curses.KEY_F4:
+				file_idx=3
+				if file_idx >= len(files)-1:
+					file_idx = len(files)-1
+			elif ch == curses.KEY_F5:
+				file_idx=4
+				if file_idx >= len(files)-1:
+					file_idx = len(files)-1
+			elif ch == curses.KEY_F6:
+				file_idx=5
+				if file_idx >= len(files)-1:
+					file_idx = len(files)-1
+			elif ch == curses.KEY_F7:
+				file_idx=6
+				if file_idx >= len(files)-1:
+					file_idx = len(files)-1
+			elif ch == curses.KEY_F8:
+				file_idx=7
+				if file_idx >= len(files)-1:
+					file_idx = len(files)-1
+			elif ch == curses.KEY_F9:
+				file_idx=len(files)-1
+			elif ch == curses.KEY_F10:
+				file_idx=len(files)-1
+			elif ch in [ ord('j'), curses.KEY_DC ]:
+				print_filelist(file_idx)
 
 
 
@@ -823,6 +1152,5 @@ if __name__ == "__main__":
 		print(f"usage: {sys.argv[0]} filelist_containing_files to browse through")
 		exit()
 
-	# pp(sys.argv)
-	parse_filelist(sys.argv[1])
+	FILTERS = parse_filter_config(FILTER_CONFIG)
 	curses.wrapper(main)
