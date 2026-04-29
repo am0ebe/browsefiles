@@ -32,6 +32,7 @@ from pprint import pprint as pp
 import tempfile
 import datetime
 import subprocess
+import tty, termios, select, atexit
 
 x = 0
 y = 0
@@ -50,12 +51,65 @@ THEMES = ['night', 'twilight', 'day']
 THEME_IDX = 0
 THEME_BG  = {'night': '#222222', 'twilight': '#2e3436', 'day': '#ffffff'}
 THEME_FG  = {'night': '#ffffff',  'twilight': '#e5ffd1', 'day': '#000000'}
+INITIAL_TERM_BG = ''   # saved on startup, restored on exit
+INITIAL_TERM_FG = ''
 THEME_PAIRS = {
     'night':    [6, 5, 2, 1, 3, 7, 4],   # CYAN MAG GREEN RED YELLOW WHITE BLUE
     'twilight': [6, 5, 2, 1, 3, 7, 4],
     'day':      [4, 5, 2, 1, 4, 0, 6],   # BLUE MAG GREEN RED BLUE  BLACK CYAN
 }
 # ----------------------------------------------------------------------
+
+def _osc_query(code):
+	"""Query terminal for current color (10=fg, 11=bg) via OSC sequence. Call BEFORE curses."""
+	try:
+		fd = sys.stdin.fileno()
+		old = termios.tcgetattr(fd)
+		tty.setraw(fd)
+		os.write(fd, f'\033]{code};?\007'.encode())
+		ready, _, _ = select.select([fd], [], [], 0.3)
+		resp = b''
+		if ready:
+			for _ in range(64):
+				c = os.read(fd, 4)
+				resp += c
+				if b'\007' in c or b'\033\\' in c:
+					break
+		termios.tcsetattr(fd, termios.TCSADRAIN, old)
+		return resp.decode('ascii', errors='ignore')
+	except Exception:
+		return ''
+
+def _parse_rgb(osc_resp):
+	"""Parse 'rgb:RRRR/GGGG/BBBB' from OSC response → '#rrggbb'."""
+	m = re.search(r'rgb:([0-9a-fA-F]+)/([0-9a-fA-F]+)/([0-9a-fA-F]+)', osc_resp)
+	if not m:
+		return ''
+	def h(s): return int(s[:2], 16)  # take first 2 hex digits (16-bit → 8-bit)
+	return f'#{h(m.group(1)):02x}{h(m.group(2)):02x}{h(m.group(3)):02x}'
+
+def _detect_theme_idx(bg_hex):
+	"""Match a bg hex color to the nearest known theme index."""
+	if not bg_hex:
+		return 0
+	for i, name in enumerate(THEMES):
+		if bg_hex.lower() == THEME_BG[name].lower():
+			return i
+	try:
+		r = int(bg_hex[1:3], 16)
+		if r > 0xa0: return THEMES.index('day')
+		if r > 0x28: return THEMES.index('twilight')
+	except Exception:
+		pass
+	return 0  # default night
+
+def _restore_terminal_colors():
+	if INITIAL_TERM_FG and INITIAL_TERM_BG:
+		try:
+			with open('/dev/tty', 'wb') as f:
+				f.write(f"\033]10;{INITIAL_TERM_FG}\007\033]11;{INITIAL_TERM_BG}\007".encode())
+		except OSError:
+			pass
 
 _zoom_source    = ''     # file path that brought us into this filelist (for zoom-out)
 VIEW_MODE       = 'all'  # 'all' | 'todo' | 'done'
@@ -326,26 +380,56 @@ def get_content_from_file(path):
 	except Exception:
 		return ['(error reading file)']
 
+def _git_root(file_path):
+	try:
+		return subprocess.check_output(
+			['git', 'rev-parse', '--show-toplevel'],
+			cwd=os.path.dirname(os.path.abspath(file_path)),
+			text=True, stderr=subprocess.DEVNULL
+		).strip()
+	except Exception:
+		return None
+
 def git_done_content(file_path):
 	if file_path in _git_done_cache:
 		return _git_done_cache[file_path]
-	try:
-		raw = subprocess.check_output(
-			['git', 'log', '--follow', '-p', '-40', '--', file_path],
-			cwd=os.path.dirname(os.path.abspath(file_path)) or '.',
-			text=True, stderr=subprocess.DEVNULL
-		)
-	except Exception:
-		result = ['(git not available)']
+
+	root = _git_root(file_path)
+	if not root:
+		result = ['(not in a git repo)']
 		_git_done_cache[file_path] = result
 		return result
 
-	commits = []       # [(msg, [lines])]
+	rel = os.path.relpath(file_path, root)
+	result = []
+
+	# 1. always show recent commits for this file
+	try:
+		log = subprocess.check_output(
+			['git', 'log', '--oneline', '-10', '--', rel],
+			cwd=root, text=True, stderr=subprocess.DEVNULL
+		).strip().splitlines()
+		if log:
+			result += ['## 📜 Recent commits', ''] + log + ['']
+		else:
+			result += ['## 📜 Recent commits', '', '(no commits yet)', '']
+	except Exception:
+		result += ['## 📜 Recent commits', '', '(git error)', '']
+
+	# 2. removed done-section items from diff history
+	try:
+		raw = subprocess.check_output(
+			['git', 'log', '--follow', '-p', '-40', '--', rel],
+			cwd=root, text=True, stderr=subprocess.DEVNULL
+		)
+	except Exception:
+		raw = ''
+
+	commits = []
 	cur_msg, cur_done, in_done = '', [], False
 	for line in raw.splitlines():
 		if line.startswith('commit '):
-			if cur_done:
-				commits.append((cur_msg, cur_done[:]))
+			if cur_done: commits.append((cur_msg, cur_done[:]))
 			cur_msg, cur_done, in_done = '', [], False
 		elif line.startswith('    ') and not cur_msg:
 			cur_msg = line.strip()
@@ -358,20 +442,18 @@ def git_done_content(file_path):
 			elif in_done and body.strip():
 				cur_done.append(body)
 		elif line.startswith('+') and not line.startswith('+++'):
-			body = line[1:]
-			if body.strip().startswith('#'):
-				in_done = False  # new heading in added block resets context
+			if line[1:].strip().startswith('#'):
+				in_done = False
 	if cur_done:
 		commits.append((cur_msg, cur_done))
 
-	if not commits:
-		result = ['(no done items in git history)']
-	else:
-		result = ['## 📜 Git Done History', '']
+	if commits:
+		result += ['## 📜 Removed done items', '']
 		for msg, items in commits:
 			result.append(f'### {msg}')
 			result.extend(items)
 			result.append('')
+
 	_git_done_cache[file_path] = result
 	return result
 
@@ -1436,4 +1518,11 @@ if __name__ == "__main__":
 		exit()
 
 	FILTERS = parse_filter_config(FILTER_CONFIG)
+
+	# detect current terminal theme via OSC query (before curses takes over)
+	INITIAL_TERM_BG = _parse_rgb(_osc_query('11'))
+	INITIAL_TERM_FG = _parse_rgb(_osc_query('10'))
+	THEME_IDX       = _detect_theme_idx(INITIAL_TERM_BG)
+	atexit.register(_restore_terminal_colors)  # restore colors when process exits
+
 	curses.wrapper(main)
