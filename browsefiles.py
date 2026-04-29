@@ -43,6 +43,7 @@ DATE_RE    = re.compile(r'@(\d{4}|\d{6})(?!\d|\w)')
 MD_LINK_RE = re.compile(r'\[([^\]]+)\]\(([^)]+)\)')
 
 _zoom_source = ''  # file path that brought us into this filelist (for zoom-out)
+VIEW_MODE = 'all'  # 'all' | 'todo' | 'done'
 
 FILTER_CONFIG = os.path.expanduser("~/.config/user/browsefiles/filters.conf")
 FILTERS = {}  # key_char -> fdef dict (aliases share same dict object)
@@ -261,6 +262,45 @@ def get_content(file_idx):
 			contents[file_idx] = lines
 	return contents[file_idx]
 
+def _classify_section(header_line):
+	low = header_line.lower()
+	if 'done' in low or '✔️' in header_line or '✅' in header_line:
+		return 'done'
+	if 'backlog' in low or '🔵' in header_line:
+		return 'backlog'
+	return 'todo'
+
+def filter_content(content, mode):
+	if mode == 'all':
+		return content
+	result = []
+	cur = 'todo'  # items before any header belong to 'todo'
+	for line in content:
+		if line.strip().startswith('#'):
+			cur = _classify_section(line)
+		if cur == mode:
+			result.append(line)
+	return result or ['(nothing)']  # avoid empty content crashing maxPage calc
+
+def find_notes_file(file_path):
+	dirname  = os.path.dirname(file_path)
+	basename = os.path.basename(file_path)
+	for candidate in [
+		basename.replace('todo_', 'notes_', 1),  # todo_re.md → notes_re.md
+		basename.replace('todo_', 'notes_', 1).replace('.md', ''),  # no ext variant
+		'notes.md',
+		'notes',
+	]:
+		if candidate == basename:
+			continue
+		full = os.path.join(dirname, candidate)
+		if os.path.isfile(full):
+			return full
+	return None
+
+def _maxpage(file_idx):
+	return len(filter_content(get_content(file_idx), VIEW_MODE)) // curses.LINES
+
 def init_curses():
 	global gui, contents, maxPage, nColor
 
@@ -279,7 +319,7 @@ def init_curses():
 	curses.init_pair(nColor, curses.COLOR_WHITE, curses.COLOR_BLACK); nColor +=1  # noqa: E702
 	curses.init_pair(nColor, curses.COLOR_BLUE, curses.COLOR_BLACK); nColor +=1
 
-	maxPage = len(get_content(0)) // curses.LINES
+	maxPage = _maxpage(0)
 
 	global MD_ATTR
 	MD_ATTR = {
@@ -318,7 +358,8 @@ def printHeader(page, maxPage, file_idx, nfiles):
 	p(f"# {nav}  ", 0, False)
 	printFileStripInline(file_idx)
 
-	s3 = f"## page [{page+1}/{maxPage+1}] "
+	view_tag = f" [{VIEW_MODE.upper()}]" if VIEW_MODE != 'all' else ""
+	s3 = f"## page [{page+1}/{maxPage+1}]{view_tag} "
 	s3 += "#" * max(0, W - len(s3))
 	p(s3)
 	p()
@@ -856,6 +897,12 @@ def print_help():
 	x=curses.COLS//3
 	p("f,/          - find (with context expansion)",color(COLOR_THEME))
 	x=curses.COLS//3
+	p("T/D/A        - view: Todos / Done / All",color(COLOR_THEME))
+	x=curses.COLS//3
+	p("V            - cycle views (all→todo→done→all)",color(COLOR_THEME))
+	x=curses.COLS//3
+	p("N            - open companion notes file",color(COLOR_THEME))
+	x=curses.COLS//3
 	p("L            - list links in current file  (o=follow in results)",color(COLOR_THEME))
 	x=curses.COLS//3
 	p("--- filters (filters.conf) ---",color(COLOR_THEME))
@@ -1018,7 +1065,7 @@ def zoom_side(isRight=False):
 
 def main(stdscr):
 
-	global x, y, gui, maxPage, GLOBAL_SEARCH, CURRENT_FILTER, _zoom_source
+	global x, y, gui, maxPage, GLOBAL_SEARCH, CURRENT_FILTER, _zoom_source, VIEW_MODE
 
 	gui = stdscr
 
@@ -1050,13 +1097,13 @@ def main(stdscr):
 			)
 		if found is not None:
 			file_idx = found
-			maxPage = len(get_content(file_idx)) // curses.LINES
+			maxPage = _maxpage(file_idx)
 
 	while True:
 		x=y=0
 
 		printHeader(page, maxPage, file_idx, len(files))
-		printPage(page, get_content(file_idx), HEADER_SIZE)
+		printPage(page, filter_content(get_content(file_idx), VIEW_MODE), HEADER_SIZE)
 
 		if GLOBAL_SEARCH:
 			ch = ord('f') #find
@@ -1119,12 +1166,12 @@ def main(stdscr):
 
 		elif ch in [ curses.KEY_LEFT ]:
 			file_idx = (file_idx - 1) % len(files)
-			maxPage = len(get_content(file_idx)) // curses.LINES
+			maxPage = _maxpage(file_idx)
 			page=0
 
 		elif ch in [ curses.KEY_RIGHT ]:
 			file_idx = (file_idx + 1) % len(files)
-			maxPage = len(get_content(file_idx)) // curses.LINES
+			maxPage = _maxpage(file_idx)
 			page=0
 
 		elif ch in [ ord('+'), ord('='), 337, 567 ] : # shift/ctrl+up
@@ -1169,6 +1216,35 @@ def main(stdscr):
 			CURRENT_FILTER = ""
 			gui.clear()
 			curses.noecho()
+
+		elif ch == ord('T'):
+			VIEW_MODE = 'todo'; page = 0; maxPage = _maxpage(file_idx)
+
+		elif ch == ord('D'):
+			VIEW_MODE = 'done'; page = 0; maxPage = _maxpage(file_idx)
+
+		elif ch in [ord('A'), ord('a')]:
+			VIEW_MODE = 'all';  page = 0; maxPage = _maxpage(file_idx)
+
+		elif ch == ord('V'):
+			modes = ['all', 'todo', 'done']
+			VIEW_MODE = modes[(modes.index(VIEW_MODE) + 1) % len(modes)]
+			page = 0; maxPage = _maxpage(file_idx)
+
+		elif ch == ord('N'):
+			notes = find_notes_file(files_with_path[file_idx])
+			if notes:
+				with tempfile.NamedTemporaryFile(mode='w', suffix='.fl', delete=False, prefix='bf_') as tf:
+					tf.write(f"^{filelist_with_path}\n\n{notes}\n")
+					tmppath = tf.name
+				os.environ['BF_ZOOM_SOURCE'] = files_with_path[file_idx]
+				os.system(f"{sys.argv[0]} {tmppath}")
+				try: os.unlink(tmppath)
+				except: pass
+				exit()
+			else:
+				printBIG("Nah :)")
+				gui.clear()
 
 		else:
 			# dynamic filter keys from filters.conf
