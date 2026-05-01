@@ -32,7 +32,7 @@ from pprint import pprint as pp
 import tempfile
 import datetime
 import subprocess
-import tty, termios, select, atexit
+import tty, termios, select
 
 x = 0
 y = 0
@@ -50,9 +50,7 @@ MD_LINK_RE = re.compile(r'\[([^\]]+)\]\(([^)]+)\)')
 THEMES = ['night', 'twilight', 'day']
 THEME_IDX = 0
 THEME_BG  = {'night': '#222222', 'twilight': '#2e3436', 'day': '#ffffff'}
-THEME_FG  = {'night': '#ffffff',  'twilight': '#e5ffd1', 'day': '#000000'}
-INITIAL_TERM_BG = ''   # saved on startup, restored on exit
-INITIAL_TERM_FG = ''
+INITIAL_TERM_BG = ''   # detected on startup for theme selection
 THEME_PAIRS = {
     'night':    [6, 5, 2, 1, 3, 7, 4],   # CYAN MAG GREEN RED YELLOW WHITE BLUE
     'twilight': [6, 5, 2, 1, 3, 7, 4],
@@ -103,13 +101,6 @@ def _detect_theme_idx(bg_hex):
 		pass
 	return 0  # default night
 
-def _restore_terminal_colors():
-	if INITIAL_TERM_FG and INITIAL_TERM_BG:
-		try:
-			with open('/dev/tty', 'wb') as f:
-				f.write(f"\033]10;{INITIAL_TERM_FG}\007\033]11;{INITIAL_TERM_BG}\007".encode())
-		except OSError:
-			pass
 
 _zoom_source    = ''     # file path that brought us into this filelist (for zoom-out)
 VIEW_MODE       = 'all'  # 'all' | 'todo' | 'done'
@@ -263,6 +254,11 @@ def parse_filelist(filelist_):
 			ref = stripped[1:].strip()
 			if is_conf:
 				parent = conf_abs + ':' + ref
+			elif ':' in os.path.basename(ref):
+				# conf:section reference stored literally in temp filelist
+				colon = ref.rfind(':')
+				conf_part = str(Path(os.path.expanduser(ref[:colon])).resolve())
+				parent = conf_part + ':' + ref[colon+1:]
 			else:
 				res = make_abs_filepath(ref)
 				parent = res[0] if res else ''
@@ -292,9 +288,12 @@ def parse_filelist(filelist_):
 				kid = res if res else ['']
 
 		matched = make_abs_filepath(file_part)
+		file_part_is_glob = any(c in file_part for c in '*?[]')
 
 		for f in matched:
 			if os.path.isdir(f):
+				if file_part_is_glob:
+					continue  # skip dirs matched by wildcards — clutters the list
 				files_with_path.append(f)
 				files_with_kid.append(f'__dir__:{f}')
 			elif os.path.isfile(f) and isEditable(f):
@@ -471,17 +470,10 @@ def _maxpage(file_idx):
 	return len(_current_content(file_idx)) // curses.LINES
 
 def _apply_theme(theme_name):
-	"""Reinitialize curses color pairs and set terminal fg/bg via OSC sequences."""
-	bg = -1  # transparent: uses terminal background (set via OSC below)
+	"""Reinitialize curses color pairs for the given theme."""
+	bg = -1  # transparent: terminal bg is left to the terminal emulator
 	for i, fg_c in enumerate(THEME_PAIRS[theme_name], 1):
 		curses.init_pair(i, fg_c, bg)
-	# OSC 10 = fg, OSC 11 = bg — write directly to /dev/tty (safe during curses)
-	try:
-		seq = f"\033]10;{THEME_FG[theme_name]}\007\033]11;{THEME_BG[theme_name]}\007"
-		with open('/dev/tty', 'wb') as tty:
-			tty.write(seq.encode())
-	except OSError:
-		pass
 
 def init_curses():
 	global gui, contents, maxPage, nColor
@@ -1519,10 +1511,8 @@ if __name__ == "__main__":
 
 	FILTERS = parse_filter_config(FILTER_CONFIG)
 
-	# detect current terminal theme via OSC query (before curses takes over)
+	# detect current terminal theme via OSC query (read-only, never writes back)
 	INITIAL_TERM_BG = _parse_rgb(_osc_query('11'))
-	INITIAL_TERM_FG = _parse_rgb(_osc_query('10'))
 	THEME_IDX       = _detect_theme_idx(INITIAL_TERM_BG)
-	atexit.register(_restore_terminal_colors)  # restore colors when process exits
 
 	curses.wrapper(main)
