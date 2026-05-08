@@ -370,6 +370,10 @@ def find_notes_file(file_path):
 		full = os.path.join(dirname, candidate)
 		if os.path.isfile(full):
 			return full
+	# fallback: any notes_*.md in same dir (covers non-todo active files)
+	matches = [m for m in glob(os.path.join(dirname, 'notes_*.md')) if os.path.basename(m) != basename]
+	if matches:
+		return matches[0]
 	return None
 
 def get_content_from_file(path):
@@ -393,65 +397,26 @@ def git_done_content(file_path):
 	if file_path in _git_done_cache:
 		return _git_done_cache[file_path]
 
-	root = _git_root(file_path)
-	if not root:
-		result = ['(not in a git repo)']
-		_git_done_cache[file_path] = result
-		return result
-
-	rel = os.path.relpath(file_path, root)
 	result = []
 
-	# 1. always show recent commits for this file
+	root = _git_root(file_path)
+	if root:
+		rel = os.path.relpath(file_path, root)
+		try:
+			log = subprocess.check_output(
+				['git', 'log', '--oneline', '-10', '--', rel],
+				cwd=root, text=True, stderr=subprocess.DEVNULL
+			).strip().splitlines()
+			result += ['## 📜 git log', ''] + (log if log else ['(no commits yet)']) + ['']
+		except Exception:
+			result += ['## 📜 git log', '', '(git error)', '']
+
 	try:
-		log = subprocess.check_output(
-			['git', 'log', '--oneline', '-10', '--', rel],
-			cwd=root, text=True, stderr=subprocess.DEVNULL
-		).strip().splitlines()
-		if log:
-			result += ['## 📜 Recent commits', ''] + log + ['']
-		else:
-			result += ['## 📜 Recent commits', '', '(no commits yet)', '']
+		with open(file_path) as f:
+			tail = f.read().splitlines()[-10:]
+		result += ['## 📄 last 10 lines', ''] + tail
 	except Exception:
-		result += ['## 📜 Recent commits', '', '(git error)', '']
-
-	# 2. removed done-section items from diff history
-	try:
-		raw = subprocess.check_output(
-			['git', 'log', '--follow', '-p', '-40', '--', rel],
-			cwd=root, text=True, stderr=subprocess.DEVNULL
-		)
-	except Exception:
-		raw = ''
-
-	commits = []
-	cur_msg, cur_done, in_done = '', [], False
-	for line in raw.splitlines():
-		if line.startswith('commit '):
-			if cur_done: commits.append((cur_msg, cur_done[:]))
-			cur_msg, cur_done, in_done = '', [], False
-		elif line.startswith('    ') and not cur_msg:
-			cur_msg = line.strip()
-		elif line.startswith('@@'):
-			in_done = False
-		elif line.startswith('-') and not line.startswith('---'):
-			body = line[1:]
-			if body.strip().startswith('#'):
-				in_done = (_classify_section(body) == 'done')
-			elif in_done and body.strip():
-				cur_done.append(body)
-		elif line.startswith('+') and not line.startswith('+++'):
-			if line[1:].strip().startswith('#'):
-				in_done = False
-	if cur_done:
-		commits.append((cur_msg, cur_done))
-
-	if commits:
-		result += ['## 📜 Removed done items', '']
-		for msg, items in commits:
-			result.append(f'### {msg}')
-			result.extend(items)
-			result.append('')
+		result += ['## 📄 last 10 lines', '', '(error reading file)']
 
 	_git_done_cache[file_path] = result
 	return result
@@ -459,12 +424,9 @@ def git_done_content(file_path):
 def _current_content(file_idx):
 	if _notes_mode and _notes_content is not None:
 		return _notes_content
-	base = filter_content(get_content(file_idx), VIEW_MODE)
 	if VIEW_MODE == 'done':
-		git = git_done_content(files_with_path[file_idx])
-		sep = [''] if (base and base != ['(nothing)']) else []
-		return base + sep + git
-	return base
+		return git_done_content(files_with_path[file_idx])
+	return filter_content(get_content(file_idx), VIEW_MODE)
 
 def _maxpage(file_idx):
 	return len(_current_content(file_idx)) // curses.LINES
@@ -1314,10 +1276,10 @@ def main(stdscr):
 			print_help()
 
 		elif ch in [ ord('e'), 10]:
-			edit(files_with_path[ file_idx ])
+			edit(_notes_file if _notes_mode else files_with_path[ file_idx ])
 
 		elif ch == ord('w'):
-			edit(files_with_path[ file_idx ])
+			edit(_notes_file if _notes_mode else files_with_path[ file_idx ])
 			exit()
 
 		elif ch == ord('E'):
