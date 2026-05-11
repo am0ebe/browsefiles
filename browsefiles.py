@@ -1042,7 +1042,7 @@ def print_help():
 	x=curses.COLS//3
 	p("a            - show All (reset view)",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("v            - cycle views all→todo→done→all",color(COLOR_THEME))
+	p("v            - cycle views all→todo→done→notes→all",color(COLOR_THEME))
 	x=curses.COLS//3
 	p("n            - toggle notes companion file (notes_XY.md)",color(COLOR_THEME))
 	x=curses.COLS//3
@@ -1389,10 +1389,24 @@ def main(stdscr):
 			_notes_mode = False; page = 0; maxPage = _maxpage(file_idx)
 
 		elif ch == ord('v'):
-			modes = ['all', 'todo', 'done']
-			_prev_view = VIEW_MODE
-			VIEW_MODE = modes[(modes.index(VIEW_MODE) + 1) % len(modes)]
-			_notes_mode = False; page = 0; maxPage = _maxpage(file_idx)
+			modes = ['all', 'todo', 'done', 'notes']
+			cur = 'notes' if _notes_mode else VIEW_MODE
+			nxt = modes[(modes.index(cur) + 1) % len(modes)]
+			if nxt == 'notes':
+				nf = find_notes_file(files_with_path[file_idx])
+				if nf:
+					_notes_file    = nf
+					_notes_content = get_content_from_file(nf)
+					_prev_notes_view = VIEW_MODE
+					_notes_mode    = True
+				else:
+					nxt = 'all'  # skip notes if companion file missing
+					_notes_mode = False
+			else:
+				_notes_mode = False
+				_prev_view  = VIEW_MODE
+				VIEW_MODE   = nxt
+			page = 0; maxPage = _maxpage(file_idx)
 
 		elif ch == ord('n'):
 			if _notes_mode:
