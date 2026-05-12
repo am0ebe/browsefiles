@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//home/strix/dotfiles/.config/user/browsefiles/go/**)",
+      "Read(//home/strix/gopro/go/pr/kb/**)",
+      "Bash(python3 -c \"import browsefiles\")",
+      "Bash(git -C ~/dotfiles status --short)"
+    ]
+  }
+}
