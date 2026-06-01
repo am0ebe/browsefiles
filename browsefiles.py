@@ -729,6 +729,8 @@ def find_dated(only_soon=False, urg_syms=('⏰', '🔥')):
 		b = _date_band(sort_key, today)
 		if b != cur_band:          # band transition → insert week.md-style divider
 			cur_band = b
+			if out:                # blank line before each band (except the first)
+				out.append("")
 			out.append(_BAND_LABELS[b])
 		out.append(entry)
 	return out
