@@ -33,6 +33,38 @@ import tempfile
 import datetime
 import subprocess
 import tty, termios, select
+import unicodedata
+
+def disp_width(s):
+	# terminal cells a string occupies. emoji = 2 cells but len()=1 codepoint,
+	# so manual x-tracking falls behind → next token overwrites emoji's right half (looked like a cut char).
+	w = 0
+	i, n = 0, len(s)
+	while i < n:
+		o = ord(s[i])
+		nxt = ord(s[i+1]) if i+1 < n else 0
+		# standalone modifiers/joiners add no cells
+		if unicodedata.combining(s[i]) or o == 0x200d or 0xfe00 <= o <= 0xfe0f or 0x1f3fb <= o <= 0x1f3ff:
+			i += 1
+			continue
+		# 2 cells if: East-Asian Wide/Full · emoji-presentation via VS16 (e.g. ‼️ ⚙️ ↕️)
+		# · in the emoji pictograph range (🏋 🖥 etc — many are EAW 'N' yet render wide)
+		# · base followed by a skin-tone modifier (🏋🏾)
+		wide = (unicodedata.east_asian_width(s[i]) in ('W', 'F')
+		        or nxt == 0xfe0f or 0x1f3fb <= nxt <= 0x1f3ff
+		        or 0x1f000 <= o <= 0x1faff)
+		w += 2 if wide else 1
+		i += 1
+		# swallow trailing modifiers + ZWJ-joined clusters (single grapheme = same cells)
+		while i < n:
+			o2 = ord(s[i])
+			if unicodedata.combining(s[i]) or 0xfe00 <= o2 <= 0xfe0f or 0x1f3fb <= o2 <= 0x1f3ff:
+				i += 1
+			elif o2 == 0x200d:        # ZWJ → consume joiner + following base char
+				i += 2
+			else:
+				break
+	return w
 
 x = 0
 y = 0
@@ -612,16 +644,16 @@ def p(msg="", attr=0, add_newline=True, highlight=False):
 			for tok_type, tok_val in lex(msg, MarkdownLexer()):
 				if x >= curses.COLS - 1:
 					break
-				tok_val = tok_val.rstrip('\n')  # newline handled below; addstr'ing it corrupts trailing wide chars (emoji headings)
+				tok_val = tok_val.rstrip('\n')  # pygments appends a '\n' token to every line; we handle newlines below, addstr'ing it corrupts cursor tracking
 				if not tok_val:
 					continue
 				style = next((v for k, v in MD_ATTR.items() if tok_type in k), curses.A_NORMAL)
 				trimmed = tok_val[:curses.COLS - x - 1]
 				gui.addstr(y, x, trimmed, style)
-				x += len(trimmed)
+				x += disp_width(trimmed)
 		else:
 			gui.addstr(y, x, msg, attr)
-			x += len(msg)
+			x += disp_width(msg)
 	except Exception:
 		pass
 
