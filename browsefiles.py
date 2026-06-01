@@ -700,10 +700,9 @@ def find_dated(only_soon=False, urg_syms=('⏰', '🔥')):
 			positions.sort()
 			if not positions:
 				positions = [(0, 0)]
-			imminent = any(d <= one_week for d in dates)
-			display  = line + "  ❗" if imminent else line  # within-1w marker; positions unchanged
-			sort_key = min(dates) if dates else one_week     # urg-only (no date) sorts into the soon band
-			rows.append((sort_key, [file_idx, lineno, display, positions]))
+			# no proximity marker: the chronological sort + visible @date already convey "soon"
+			sort_key = min(dates) if dates else one_week  # urg-only (no date) sorts into the soon band
+			rows.append((sort_key, [file_idx, lineno, line, positions]))
 	rows.sort(key=lambda r: r[0])
 	return [r[1] for r in rows] or None
 
