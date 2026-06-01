@@ -41,7 +41,7 @@ GLOBAL_SEARCH = ""
 CURRENT_FILTER = ""
 HEADER_SIZE = 4
 
-DATE_RE    = re.compile(r'@(\d{4}|\d{6})(?!\d|\w)')
+DATE_RE    = re.compile(r'@(\d{3,4}|\d{6})(?!\d|\w)')  # @MDD @MMDD @YYMMDD
 MD_LINK_RE = re.compile(r'\[([^\]]+)\]\(([^)]+)\)')
 
 # --- themes -----------------------------------------------------------
@@ -659,8 +659,8 @@ def find_by_section(section_kw, patterns=None):
 def parse_date_tag(digits):
 	today = datetime.date.today()
 	try:
-		if len(digits) == 4:
-			mm, dd = int(digits[:2]), int(digits[2:])
+		if len(digits) in (3, 4):  # @MDD or @MMDD — current year, roll to next if past
+			mm, dd = int(digits[:-2]), int(digits[-2:])
 			d = datetime.date(today.year, mm, dd)
 			if d < today:  # past this year → assume next year
 				d = datetime.date(today.year + 1, mm, dd)
@@ -671,28 +671,41 @@ def parse_date_tag(digits):
 	except ValueError:
 		return None
 
-def find_urgent(patterns):
+def find_dated(only_soon=False, urg_syms=('⏰', '🔥')):
+	# collect every line bearing an @date tag, sorted chronologically.
+	#   only_soon=False → cal view: ALL dated items.
+	#   only_soon=True  → now view: overdue + within-7d (auto-urgent) + any urg_syms-flagged.
+	# urg_syms = manual urgency markers (lead-time escape hatch — surface regardless of proximity).
 	today    = datetime.date.today()
 	one_week = today + datetime.timedelta(days=7)
-	result = []
+	rows = []
 	for file_idx in range(len(files)):
 		for lineno, line in enumerate(get_content(file_idx), 1):
-			positions = []
-			for sym in patterns:
-				for m in re.finditer(re.escape(sym), line, re.IGNORECASE):
-					positions.append((m.start(), m.end()))
-			imminent = False
+			positions, dates = [], []
 			for m in DATE_RE.finditer(line):
 				positions.append((m.start(), m.end()))
 				d = parse_date_tag(m.group(1))
-				if d and d <= one_week:
-					imminent = True
-			if not positions:
+				if d:
+					dates.append(d)
+			has_urg = False
+			for sym in urg_syms:
+				for m in re.finditer(re.escape(sym), line):
+					positions.append((m.start(), m.end()))
+					has_urg = True
+			if only_soon:
+				if not (has_urg or any(d <= one_week for d in dates)):
+					continue
+			elif not dates:
 				continue
 			positions.sort()
-			display = line + "  ❗" if imminent else line  # append marker; positions unchanged
-			result.append([file_idx, lineno, display, positions])
-	return result or None
+			if not positions:
+				positions = [(0, 0)]
+			imminent = any(d <= one_week for d in dates)
+			display  = line + "  ❗" if imminent else line  # within-1w marker; positions unchanged
+			sort_key = min(dates) if dates else one_week     # urg-only (no date) sorts into the soon band
+			rows.append((sort_key, [file_idx, lineno, display, positions]))
+	rows.sort(key=lambda r: r[0])
+	return [r[1] for r in rows] or None
 
 def get_indent(line):
 	return len(line) - len(line.lstrip())
@@ -778,13 +791,21 @@ def find_links_in_file(file_idx):
 			result.append([file_idx, lineno, line, [(m.start(), m.end())]])
 	return result or None
 
+def is_date_filter(fdef):
+	return "📆" in fdef['patterns'] or "⏰" in fdef['patterns']
+
 def find_filter(fdef):
+	pats = fdef['patterns']
+	# date views return a flat chronological list (no context expansion — date is in the line)
+	if "📆" in pats:
+		return find_dated(only_soon=False)                                   # cal: ALL dated
+	if "⏰" in pats:
+		urg = tuple(p for p in pats if p in ('⏰', '🔥')) or ('⏰',)
+		return find_dated(only_soon=True, urg_syms=urg)                      # now: soon + manual urg
 	if fdef['section_kw']:
-		res = find_by_section(fdef['section_kw'], fdef['patterns'])
-	elif "⏰" in fdef['patterns']:
-		res = find_urgent(fdef['patterns'])  # auto: ⏰ → date-aware search
-	elif fdef['patterns']:
-		res = find_any(fdef['patterns'])
+		res = find_by_section(fdef['section_kw'], pats)
+	elif pats:
+		res = find_any(pats)
 	else:
 		return None
 	return expand_with_context(res) if res else None
@@ -794,7 +815,7 @@ def run_filter(fdef):
 	CURRENT_FILTER = fdef['label']
 	res = find_filter(fdef)
 	if res:
-		Menu(res)
+		Menu(res, flat=is_date_filter(fdef))  # date views: flat chronological, no file headers
 	else:
 		printBIG("Nah!")
 	CURRENT_FILTER = ""  # clear when back in browse mode
@@ -803,25 +824,27 @@ def run_filter(fdef):
 # ---------------------------------------------------------------------------
 
 class Menu:
-	def __init__(self, result):
+	def __init__(self, result, flat=False):
 		self.res = list(result)  # copy — don't mutate caller's list
 
 		self.current_row = -1
 		self.lines_page = curses.LINES - 1
 		self.page = 0
+		self.flat = flat
 
-		last_file_idx = -1
-		idx = 0
-		while idx < len(self.res):
+		if not flat:  # flat = chronological/cross-file list — skip per-file section headers
+			last_file_idx = -1
+			idx = 0
+			while idx < len(self.res):
 
-			cur_file_idx = self.res[idx][0]
-			if cur_file_idx != last_file_idx:
-				last_file_idx = cur_file_idx
+				cur_file_idx = self.res[idx][0]
+				if cur_file_idx != last_file_idx:
+					last_file_idx = cur_file_idx
 
-				self.res.insert(idx  ,"")
-				self.res.insert(idx+1,f"###   {files[cur_file_idx]}   ###") # add header
-				idx += 2
-			idx += 1
+					self.res.insert(idx  ,"")
+					self.res.insert(idx+1,f"###   {files[cur_file_idx]}   ###") # add header
+					idx += 2
+				idx += 1
 
 		self.nrow = len(self.res)
 		assert self.nrow > 0
@@ -982,7 +1005,7 @@ class Menu:
 				cur = self.res[self.current_row]
 				follow_link(files_with_path[cur[0]], cur[2])
 
-			elif ch == ord('c'):
+			elif ch == ord('c') and not self.flat:  # in date/flat menus 'c' falls through → exit (toggle back)
 
 				cur_line=self.res[self.current_row][2].replace('	',' ')
 				xerox.copy(cur_line)
