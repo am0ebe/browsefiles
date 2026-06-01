@@ -656,6 +656,24 @@ def find_by_section(section_kw, patterns=None):
 			result.append([file_idx, lineno, line, pos])
 	return result or None
 
+_BAND_LABELS = {
+	0: '_— overdue —_',
+	1: '_— this week —_',
+	2: '_— next week+ —_',
+	3: '_— next month+ —_',
+}
+
+def _date_band(d, today):
+	# bucket a date into overdue / this week / next week+ / next month+ (week.md-style horizon)
+	if d < today:
+		return 0
+	if d <= today + datetime.timedelta(days=6):
+		return 1
+	next_month = (today.replace(day=1) + datetime.timedelta(days=32)).replace(day=1)
+	if d < next_month:
+		return 2
+	return 3
+
 def parse_date_tag(digits):
 	today = datetime.date.today()
 	try:
@@ -703,8 +721,17 @@ def find_dated(only_soon=False, urg_syms=('⏰', '🔥')):
 			# no proximity marker: the chronological sort + visible @date already convey "soon"
 			sort_key = min(dates) if dates else one_week  # urg-only (no date) sorts into the soon band
 			rows.append((sort_key, [file_idx, lineno, line, positions]))
+	if not rows:
+		return None
 	rows.sort(key=lambda r: r[0])
-	return [r[1] for r in rows] or None
+	out, cur_band = [], None
+	for sort_key, entry in rows:
+		b = _date_band(sort_key, today)
+		if b != cur_band:          # band transition → insert week.md-style divider
+			cur_band = b
+			out.append(_BAND_LABELS[b])
+		out.append(entry)
+	return out
 
 def get_indent(line):
 	return len(line) - len(line.lstrip())
