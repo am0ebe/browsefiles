@@ -103,13 +103,14 @@ def _detect_theme_idx(bg_hex):
 
 
 _zoom_source    = ''     # file path that brought us into this filelist (for zoom-out)
-VIEW_MODE       = 'all'  # 'all' | 'todo' | 'done'
+VIEW_MODE       = 'todo' # default: hide done(✔️)+backlog(🔵) for quick scan · 'all'|'todo'|'done'
 _prev_view      = 'all'  # view before last toggle (for d/t toggle-back)
 _notes_mode     = False  # True = displaying companion notes file
 _notes_content  = None   # loaded lines of notes file
 _notes_file     = None   # path of current notes file
 _prev_notes_view= 'all'  # VIEW_MODE to restore when toggling notes off
 _git_done_cache = {}     # file_path → list of lines (cached per session)
+WEEK_FILE       = os.path.expanduser("~/gopro/go/.conf/week.md")  # 'w' quick-nav target (generated weekplan)
 
 FILTER_CONFIG = os.path.expanduser("~/.config/user/browsefiles/filters.conf")
 FILTERS = {}  # key_char -> fdef dict (aliases share same dict object)
@@ -493,7 +494,7 @@ def printHeader(page, maxPage, file_idx, nfiles):
 	printFileStripInline(file_idx)
 
 	if _notes_mode and _notes_file:
-		view_tag = f" [NOTES: {os.path.basename(_notes_file)}]"
+		view_tag = " [WEEK]" if _notes_file == WEEK_FILE else f" [NOTES: {os.path.basename(_notes_file)}]"
 	elif VIEW_MODE != 'all':
 		view_tag = f" [{VIEW_MODE.upper()}]"
 	else:
@@ -1130,7 +1131,9 @@ def print_help():
 	x=curses.COLS//3
 	p("e            - edit current file",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("w            - edit current file and exit",color(COLOR_THEME))
+	p("w            - week.md quick-view (toggle)",color(COLOR_THEME))
+	x=curses.COLS//3
+	p("W            - edit current file and exit",color(COLOR_THEME))
 	x=curses.COLS//3
 	p("E            - edit all files",color(COLOR_THEME))
 	x=curses.COLS//3
@@ -1329,7 +1332,18 @@ def main(stdscr):
 		elif ch in [ ord('e'), 10]:
 			edit(_notes_file if _notes_mode else files_with_path[ file_idx ])
 
-		elif ch == ord('w'):
+		elif ch == ord('w'):  # week.md quick-view (toggle) — reuses notes overlay
+			if _notes_mode and _notes_file == WEEK_FILE:
+				_notes_mode = False
+				VIEW_MODE = _prev_notes_view
+			else:
+				_notes_file      = WEEK_FILE
+				_notes_content   = get_content_from_file(WEEK_FILE)
+				_prev_notes_view = VIEW_MODE
+				_notes_mode      = True
+			page = 0; maxPage = _maxpage(file_idx)
+
+		elif ch == ord('W'):  # (moved from 'w') edit current file and exit
 			edit(_notes_file if _notes_mode else files_with_path[ file_idx ])
 			exit()
 
