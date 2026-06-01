@@ -573,6 +573,9 @@ def p(msg="", attr=0, add_newline=True, highlight=False):
 			for tok_type, tok_val in lex(msg, MarkdownLexer()):
 				if x >= curses.COLS - 1:
 					break
+				tok_val = tok_val.rstrip('\n')  # newline handled below; addstr'ing it corrupts trailing wide chars (emoji headings)
+				if not tok_val:
+					continue
 				style = next((v for k, v in MD_ATTR.items() if tok_type in k), curses.A_NORMAL)
 				trimmed = tok_val[:curses.COLS - x - 1]
 				gui.addstr(y, x, trimmed, style)
@@ -699,7 +702,12 @@ def find_dated(only_soon=False, urg_syms=('⏰', '🔥')):
 	one_week = today + datetime.timedelta(days=7)
 	rows = []
 	for file_idx in range(len(files)):
+		cur_sec = 'todo'
 		for lineno, line in enumerate(get_content(file_idx), 1):
+			if line.strip().startswith('#'):
+				cur_sec = _classify_section(line)
+			if cur_sec == 'done' or '✔️' in line:
+				continue  # done items aren't future calendar entries
 			positions, dates = [], []
 			for m in DATE_RE.finditer(line):
 				positions.append((m.start(), m.end()))
