@@ -109,8 +109,17 @@ _notes_mode     = False  # True = displaying companion notes file
 _notes_content  = None   # loaded lines of notes file
 _notes_file     = None   # path of current notes file
 _prev_notes_view= 'all'  # VIEW_MODE to restore when toggling notes off
+_overlay_label  = 'NOTES'# header tag for the current overlay (notes/week/res/…)
 _git_done_cache = {}     # file_path → list of lines (cached per session)
-WEEK_FILE       = os.path.expanduser("~/gopro/go/.conf/week.md")  # 'w' quick-nav target (generated weekplan)
+WEEK_FILE       = os.path.expanduser("~/gopro/go/.conf/week.md")  # default 'w' quick-nav target (generated weekplan)
+
+# quick-nav overlay map (key → file overlay) — see nav.conf
+NAV_CONFIG  = os.path.expanduser("~/.config/user/browsefiles/nav.conf")
+DEFAULT_NAV = {
+	'n': {'spec': '@notes',  'label': 'notes'},
+	'w': {'spec': WEEK_FILE, 'label': 'week'},
+}
+NAV = {}  # key_char -> {'spec', 'label'} ; loaded from NAV_CONFIG (falls back to DEFAULT_NAV)
 
 FILTER_CONFIG = os.path.expanduser("~/.config/user/browsefiles/filters.conf")
 FILTERS = {}  # key_char -> fdef dict (aliases share same dict object)
@@ -118,6 +127,26 @@ FILTERS = {}  # key_char -> fdef dict (aliases share same dict object)
 editor = "subl"
 parent = ""
 filelist = ""
+
+# ---------------------------------------------------------------------------
+# quick-nav config
+
+def parse_nav_config(path):
+	# format: key | spec | label   (spec: @notes | ~/abs/path | relative-glob)
+	if not os.path.exists(path):
+		return dict(DEFAULT_NAV)
+	nav = {}
+	with open(path) as f:
+		for line in f:
+			line = line.strip()
+			if not line or line.startswith('#'):
+				continue
+			parts = [s.strip() for s in line.split('|')]
+			if len(parts) < 2 or not parts[0]:
+				continue
+			nav[parts[0]] = {'spec':  parts[1],
+			                 'label': parts[2] if len(parts) > 2 else os.path.basename(parts[1])}
+	return nav or dict(DEFAULT_NAV)
 
 # ---------------------------------------------------------------------------
 # filter config
@@ -357,6 +386,16 @@ def filter_content(content, mode):
 			result.append(line)
 	return result or ['(nothing)']  # avoid empty content crashing maxPage calc
 
+def resolve_nav_target(spec, current_file):
+	# @notes → companion notes file · abs/~ path → fixed file · else → glob in current file's dir
+	if spec == '@notes':
+		return find_notes_file(current_file)
+	if spec.startswith('~') or spec.startswith('/'):
+		path_ = os.path.expanduser(spec)
+		return path_ if os.path.isfile(path_) else None
+	matches = sorted(m for m in glob(os.path.join(os.path.dirname(current_file), spec)) if os.path.isfile(m))
+	return matches[0] if matches else None
+
 def find_notes_file(file_path):
 	dirname  = os.path.dirname(file_path)
 	basename = os.path.basename(file_path)
@@ -494,7 +533,7 @@ def printHeader(page, maxPage, file_idx, nfiles):
 	printFileStripInline(file_idx)
 
 	if _notes_mode and _notes_file:
-		view_tag = " [WEEK]" if _notes_file == WEEK_FILE else f" [NOTES: {os.path.basename(_notes_file)}]"
+		view_tag = f" [{_overlay_label.upper()}]"
 	elif VIEW_MODE != 'all':
 		view_tag = f" [{VIEW_MODE.upper()}]"
 	else:
@@ -1104,9 +1143,13 @@ def print_help():
 	x=curses.COLS//3
 	p("v            - cycle views all→todo→done→notes→all",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("n            - toggle notes companion file (notes_XY.md)",color(COLOR_THEME))
-	x=curses.COLS//3
 	p("  done view also shows git-history removed done items",color(COLOR_THEME))
+	x=curses.COLS//3
+	p("--- quick-nav overlays (nav.conf) ---",color(COLOR_THEME))
+	for key_char in sorted(NAV.keys()):
+		x=curses.COLS//3
+		ent = NAV[key_char]
+		p(f"{key_char:<13}- {ent['label']} ({ent['spec']})  [toggle]",color(COLOR_THEME))
 	x=curses.COLS//3
 	p("L            - list links in current file  (o=follow in results)",color(COLOR_THEME))
 	x=curses.COLS//3
@@ -1273,7 +1316,7 @@ def zoom_side(isRight=False):
 def main(stdscr):
 
 	global x, y, gui, maxPage, GLOBAL_SEARCH, CURRENT_FILTER, _zoom_source, THEME_IDX
-	global VIEW_MODE, _prev_view, _notes_mode, _notes_content, _notes_file, _prev_notes_view
+	global VIEW_MODE, _prev_view, _notes_mode, _notes_content, _notes_file, _prev_notes_view, _overlay_label
 
 	gui = stdscr
 
@@ -1340,18 +1383,7 @@ def main(stdscr):
 		elif ch in [ ord('e'), 10]:
 			edit(_notes_file if _notes_mode else files_with_path[ file_idx ])
 
-		elif ch == ord('w'):  # week.md quick-view (toggle) — reuses notes overlay
-			if _notes_mode and _notes_file == WEEK_FILE:
-				_notes_mode = False
-				VIEW_MODE = _prev_notes_view
-			else:
-				_notes_file      = WEEK_FILE
-				_notes_content   = get_content_from_file(WEEK_FILE)
-				_prev_notes_view = VIEW_MODE
-				_notes_mode      = True
-			page = 0; maxPage = _maxpage(file_idx)
-
-		elif ch == ord('W'):  # (moved from 'w') edit current file and exit
+		elif ch == ord('W'):  # edit current file and exit ('w' is now a quick-nav key)
 			edit(_notes_file if _notes_mode else files_with_path[ file_idx ])
 			exit()
 
@@ -1472,6 +1504,7 @@ def main(stdscr):
 					_notes_content = get_content_from_file(nf)
 					_prev_notes_view = VIEW_MODE
 					_notes_mode    = True
+					_overlay_label = 'notes'
 				else:
 					nxt = 'all'  # skip notes if companion file missing
 					_notes_mode = False
@@ -1481,22 +1514,23 @@ def main(stdscr):
 				VIEW_MODE   = nxt
 			page = 0; maxPage = _maxpage(file_idx)
 
-		elif ch == ord('n'):
-			if _notes_mode:
+		elif (32 <= ch < 127) and chr(ch) in NAV:  # quick-nav overlay (nav.conf): n=notes w=week …
+			entry  = NAV[chr(ch)]
+			target = resolve_nav_target(entry['spec'], files_with_path[file_idx])
+			if _notes_mode and target and _notes_file == target:   # same target → toggle off
 				_notes_mode = False
 				VIEW_MODE = _prev_notes_view
 				page = 0; maxPage = _maxpage(file_idx)
+			elif target:
+				_notes_file      = target
+				_notes_content   = get_content_from_file(target)
+				_prev_notes_view = VIEW_MODE
+				_notes_mode      = True
+				_overlay_label   = entry['label']
+				page = 0; maxPage = _maxpage(file_idx)
 			else:
-				nf = find_notes_file(files_with_path[file_idx])
-				if nf:
-					_notes_file    = nf
-					_notes_content = get_content_from_file(nf)
-					_prev_notes_view = VIEW_MODE
-					_notes_mode    = True
-					page = 0; maxPage = _maxpage(file_idx)
-				else:
-					printBIG("Nah :)")
-					gui.clear()
+				printBIG("Nah :)")
+				gui.clear()
 
 		else:
 			# dynamic filter keys from filters.conf
@@ -1559,6 +1593,7 @@ if __name__ == "__main__":
 		exit()
 
 	FILTERS = parse_filter_config(FILTER_CONFIG)
+	NAV     = parse_nav_config(NAV_CONFIG)
 
 	# detect current terminal theme via OSC query (read-only, never writes back)
 	INITIAL_TERM_BG = _parse_rgb(_osc_query('11'))
