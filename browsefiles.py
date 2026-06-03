@@ -913,11 +913,18 @@ def find_links_in_file(file_idx):
 			result.append([file_idx, lineno, line, [(m.start(), m.end())]])
 	return result or None
 
-def _insert_todo_line(path, line):
-	# insert under '## 🔵' backlog header (new→🔵 flow); else first header; else append at EOF
+_TODO_SECTIONS = {  # moji-prompt key → status-section header symbol (scaffold order)
+	'w': '⏳', 'd': '⏳',   # doing / wip
+	'!': '‼️', '1': '‼️',   # committed
+	'c': '📆',               # calendar
+	'b': '🔵',               # backlog (default)
+}
+
+def _insert_todo_line(path, line, sect='🔵'):
+	# insert under '## <sect>' header; else first header; else append at EOF
 	with open(path) as f:
 		lines = f.read().splitlines()
-	idx = next((i+1 for i, l in enumerate(lines) if l.strip().startswith('#') and '🔵' in l), None)
+	idx = next((i+1 for i, l in enumerate(lines) if l.strip().startswith('#') and sect in l), None)
 	if idx is None:
 		idx = next((i+1 for i, l in enumerate(lines) if l.strip().startswith('#')), None)
 	if idx is None:
@@ -935,16 +942,23 @@ def quick_add_todo(file_idx):
 	curses.echo()
 	gui.clear()
 	y = curses.LINES - 1; x = 0
-	p("+ todo (→ 🔵)? ")
+	p("+ todo? ")
 	try:
 		entry = gui.getstr().decode("utf-8").strip()
 	except Exception:
 		entry = ""
 	curses.noecho()
-	gui.clear()
 	if not entry:
+		gui.clear()
 		return
-	_insert_todo_line(path, entry if entry.lstrip().startswith('-') else f"- {entry}")
+	# pick status section via single moji key (Enter/unknown → 🔵)
+	gui.clear()
+	y = curses.LINES - 1; x = 0
+	p("moji?  ⏳=w  ‼️=!  📆=c  🔵=b  (def 🔵): ")
+	k = gui.getch()
+	sect = _TODO_SECTIONS.get(chr(k), '🔵') if 0 <= k < 256 else '🔵'
+	gui.clear()
+	_insert_todo_line(path, entry if entry.lstrip().startswith('-') else f"- {entry}", sect)
 	contents[file_idx] = None  # invalidate cache → reload on next access
 
 def is_date_filter(fdef):
@@ -1221,7 +1235,7 @@ def print_help():
 	x=curses.COLS//3
 	p("a            - show All (reset view)",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("A            - quick-add todo line to current file (→ 🔵)",color(COLOR_THEME))
+	p("A            - quick-add todo line (asks section moji: ⏳/‼️/📆/🔵)",color(COLOR_THEME))
 	x=curses.COLS//3
 	p("v            - cycle views all→todo→done→notes📕→res📌→all",color(COLOR_THEME))
 	x=curses.COLS//3

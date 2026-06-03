@@ -12,7 +12,7 @@
 	- non-txt files: mk list + menu; select+enter ➡ open w `o()`; multi-select (1/all/some) ➡ open md w subl
 
 ## ✔️
-- `A` quick-add todo: prompt → insert line at top of `## 🔵` (or first header / EOF) → cache invalidated · auto-prefix `- `
+- `A` quick-add todo: prompt for text → 2nd "moji?" prompt picks section (⏳=w ‼️=! 📆=c 🔵=b, def 🔵) → insert at top of that `## <sect>` (or first header/EOF) · auto-prefix `- ` · cache invalidated
 - DONE view: git log + file's own `## ✔️` section (via filter_content) — dropped "last 10 lines" tail
 - `v` view cycle now all→todo→done→notes📕→res📌→all (RES via `res.md res/res.md` overlay); header tags show emoji (DONE✔️/NOTES📕/RES📌); missing-companion overlays auto-skip
 - 🩹 printBIG crash + ↕️ render space: bounds-clip rows/width, center vertically, figlet width=COLS (`_safe_addstr`/`_render_big`) — fixes addwstr ERR on 'x'/"Nah :)"
