@@ -419,6 +419,14 @@ def filter_content(content, mode):
 	return result or ['(nothing)']  # avoid empty content crashing maxPage calc
 
 def resolve_nav_target(spec, current_file):
+	# spec may list >1 space-separated alternatives; first hit wins (e.g. "res.md res/res.md")
+	for alt in spec.split():
+		hit = _resolve_nav_alt(alt, current_file)
+		if hit:
+			return hit
+	return None
+
+def _resolve_nav_alt(spec, current_file):
 	# @notes → companion notes file · abs/~ path → fixed file · else → glob in current file's dir
 	if spec == '@notes':
 		return find_notes_file(current_file)
@@ -1228,37 +1236,49 @@ def print_help():
 	gui.getch()
 	gui.clear()
 
+def _safe_addstr(y, x, s, attr):
+	# clip to screen: skip off-screen rows, trim line to fit width (last cell would ERR)
+	if y < 0 or y >= curses.LINES:
+		return
+	if x < 0:
+		s = s[-x:]; x = 0
+	maxw = curses.COLS - x - 1
+	if maxw <= 0:
+		return
+	try:
+		gui.addstr(y, x, s[:maxw], attr)
+	except curses.error:
+		pass
+
+def _render_big(s):
+	# render within current terminal width so wide words don't overflow
+	font = random.choice(["shadow","standard","3-d","block","small","ogre","chunky"])
+	f = pyfiglet.Figlet(font=font, width=max(curses.COLS, 1))
+	return f.renderText(s).split("\n")
+
 def printBIG(str):
 
 	curses.flash()
 	gui.clear()
-	y = curses.LINES // 2
-	x = curses.COLS // 2 - 20
-
-	fonts = ["shadow","standard","3-d", "block","small","ogre","chunky"]
-	font = random.choice(fonts)
-	f = pyfiglet.Figlet(font=font)
-	ss=f.renderText(str).split("\n")
+	ss = _render_big(str)
+	y = max(0, curses.LINES // 2 - len(ss) // 2)
+	x = max(0, curses.COLS // 2 - 20)
 
 	q=10  # 1s at 0.1s/frame
 	while q:
 		q-=1
-		y_off=-3
+		y_off=0
 		for s in ss:
-			gui.addstr(y+y_off,x,s,color())
+			_safe_addstr(y+y_off, x, s, color())
 			y_off+=1
 		gui.refresh()
 		time.sleep(0.1)
 
 def printBIG2(str,y=0,x=0):
 
-	fonts = ["shadow","standard","3-d", "block","small","ogre","chunky"]
-	font = random.choice(fonts)
-	f = pyfiglet.Figlet(font=font)
-	ss=f.renderText(str).split("\n")
-
+	ss = _render_big(str)
 	for s in ss:
-		gui.addstr(y,x,s,color())
+		_safe_addstr(y, x, s, color())
 		y+=1
 
 	return y,x
