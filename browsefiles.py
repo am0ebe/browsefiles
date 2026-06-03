@@ -939,10 +939,15 @@ def quick_add_todo(file_idx):
 	path = files_with_path[file_idx]
 	if os.path.isdir(path):
 		return
-	curses.echo()
+	# single screen: title, floating moji hint, then the input line
 	gui.clear()
+	y = curses.LINES - 3; x = 0
+	p("quick-add new todo item:")
+	y = curses.LINES - 2; x = 0
+	p("moji?  ⏳=w/1   ‼️ =!/2   📆=c/3   🔵=b/4   (dflt 🔵)")
 	y = curses.LINES - 1; x = 0
-	p("+ todo? ")
+	p("> ")
+	curses.echo()
 	try:
 		entry = gui.getstr().decode("utf-8").strip()
 	except Exception:
@@ -951,10 +956,7 @@ def quick_add_todo(file_idx):
 	if not entry:
 		gui.clear()
 		return
-	# pick status section via single moji key (Enter/unknown → 🔵)
-	gui.clear()
-	y = curses.LINES - 1; x = 0
-	p("moji?  ⏳=w/1  ‼️=!/2  📆=c/3  🔵=b/4  (def 🔵): ")
+	# moji key — hint still visible above (Enter/unknown → 🔵)
 	k = gui.getch()
 	sect = _TODO_SECTIONS.get(chr(k), '🔵') if 0 <= k < 256 else '🔵'
 	gui.clear()
