@@ -1635,7 +1635,7 @@ def main(stdscr):
 				y += 1
 			draw_regex_help(y + 1)
 			y=curses.LINES-1; x=0
-			p("find? ")
+			p("find? ", color(COLOR_THEME) | curses.A_BOLD, add_newline=False)
 			y=0
 
 			if GLOBAL_SEARCH:
