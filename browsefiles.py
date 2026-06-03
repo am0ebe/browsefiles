@@ -1244,6 +1244,8 @@ def print_help():
 	x=curses.COLS//3
 	p("f,/          - find (context expansion) · prefix query w / for regex",color(COLOR_THEME))
 	x=curses.COLS//3
+	p("  regex egs: /a|b (either) · /^## (line-start) · /\\d{4} (4 digits) · /a.*b (a…b) · /\\bTODO (word)",color(COLOR_THEME))
+	x=curses.COLS//3
 	p("t/d          - toggle Todo/Done view (press again to go back)",color(COLOR_THEME))
 	x=curses.COLS//3
 	p("a            - show All (reset view)",color(COLOR_THEME))
@@ -1577,7 +1579,7 @@ def main(stdscr):
 			gui.clear()
 			y=curses.LINES-1
 			x=0
-			p("find? ")
+			p("find (/=regex)? ")
 			y=0
 
 			if GLOBAL_SEARCH:
