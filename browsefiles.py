@@ -1580,8 +1580,10 @@ def main(stdscr):
 			y=0; x=0
 			p("/=regex")
 			y=1; x=0
-			p("regex egs: a|b (either) · ^## (line-start) · \\d{4} (4 digits) · a.*b (a…b)")
+			p("regex egs: a|b (either) · ^## (line-start) · done$ (line-end) · \\d{4} (4 digits)")
 			y=2; x=0
+			p("           a.*b (a…b) · (foo|bar) (group) · (ab)+ (repeat) · [aeiou] (charclass)")
+			y=3; x=0
 			p("(no / prefix = literal substring)")
 			y=curses.LINES-1; x=0
 			p("find? ")
