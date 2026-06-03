@@ -6,12 +6,12 @@
 ## 🔵
 - in 'j' file list overview, add scroll mechanism (reuse existing menu class/func?)  
 - add file search (useful in big project) to not only search in files, but to search for files as well 
-- regex in find (prepend query w marker 2 switch mode)
 - xpand 2 no-txt-files (pdfs, excel). how? 🛑
 	- 🔍filenames o 🔍 inside pdf w 🔧 + 🔍 inside excel / other filetypes?
 	- non-txt files: mk list + menu; select+enter ➡ open w `o()`; multi-select (1/all/some) ➡ open md w subl
 
 ## ✔️
+- regex in find: prefix query w `/` → raw regex (else re.escape literal); invalid regex → no matches; zero-width matches filtered
 - `A` quick-add todo: prompt for text → 2nd "moji?" prompt picks section (⏳=w ‼️=! 📆=c 🔵=b, def 🔵) → insert at top of that `## <sect>` (or first header/EOF) · auto-prefix `- ` · cache invalidated
 - DONE view: git log + file's own `## ✔️` section (via filter_content) — dropped "last 10 lines" tail
 - `v` view cycle now all→todo→done→notes📕→res📌→all (RES via `res.md res/res.md` overlay); header tags show emoji (DONE✔️/NOTES📕/RES📌); missing-companion overlays auto-skip

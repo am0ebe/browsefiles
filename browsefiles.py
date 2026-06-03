@@ -686,13 +686,20 @@ def find(query=""):
 		if not query:
 			return
 
+	# leading '/' → raw regex; otherwise literal substring (re.escape)
+	if query.startswith('/'):
+		try:
+			pat = re.compile(query[1:], re.IGNORECASE)
+		except re.error:
+			return None  # invalid regex → no matches
+	else:
+		pat = re.compile(re.escape(query), re.IGNORECASE)
+
 	result = []
 	for file_idx in range(len(files)):
 		for lineno, line in enumerate(get_content(file_idx), 1):
 
-			positions=[]
-			for m in re.finditer(re.escape(query), line, re.IGNORECASE):
-				positions.append( (m.start(), m.end()) )
+			positions = [(m.start(), m.end()) for m in pat.finditer(line) if m.end() > m.start()]
 
 			if positions:
 				result.append( [ file_idx, lineno, line, positions ] )
@@ -1235,7 +1242,7 @@ def print_help():
 	x=curses.COLS//3
 	p("[/]          - ⇦/⇨ prev/next sibling filelist",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("f,/          - find (with context expansion)",color(COLOR_THEME))
+	p("f,/          - find (context expansion) · prefix query w / for regex",color(COLOR_THEME))
 	x=curses.COLS//3
 	p("t/d          - toggle Todo/Done view (press again to go back)",color(COLOR_THEME))
 	x=curses.COLS//3
