@@ -1,7 +1,6 @@
 ## ⏳
 
 ## ‼️
-- toggle view mode: toggle "TODO", "DONE ✔️", "NOTES 📕" and "RES 📌" (add the moji + RES)
 - in DONE view dont show "last 10 lines" only show git log + ## ✔️ items
 ## 📆
 
@@ -15,6 +14,7 @@
 - quick add todo (shortcut ➡ append 2 cur file)
 
 ## ✔️
+- `v` view cycle now all→todo→done→notes📕→res📌→all (RES via `res.md res/res.md` overlay); header tags show emoji (DONE✔️/NOTES📕/RES📌); missing-companion overlays auto-skip
 - 🩹 printBIG crash + ↕️ render space: bounds-clip rows/width, center vertically, figlet width=COLS (`_safe_addstr`/`_render_big`) — fixes addwstr ERR on 'x'/"Nah :)"
 - add toggle mode to toggle/show todo_* (optional + notes files) and then show all md files  
 - 📆 cal quick-nav: `c`=ALL dated chronological · `3`=now (overdue+7d+⏰/🔥) · widened @MDD regex · urgency derived f date proximity, ⏰=lead-time escape

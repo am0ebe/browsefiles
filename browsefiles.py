@@ -144,6 +144,8 @@ _prev_notes_view= 'all'  # VIEW_MODE to restore when toggling notes off
 _overlay_label  = 'NOTES'# header tag for the current overlay (notes/week/res/…)
 _git_done_cache = {}     # file_path → list of lines (cached per session)
 WEEK_FILE       = os.path.expanduser("~/gopro/go/.conf/week.md")  # default 'w' quick-nav target (generated weekplan)
+_VIEW_EMOJI     = {'done': '✔️', 'notes': '📕', 'res': '📌'}  # header-tag emoji per view (todo/all: none)
+_RES_SPEC       = 'res.md res/res.md'  # companion resource file for RES view (mirrors nav.conf 's')
 
 # quick-nav overlay map (key → file overlay) — see nav.conf
 NAV_CONFIG  = os.path.expanduser("~/.config/user/browsefiles/nav.conf")
@@ -398,6 +400,10 @@ def get_content(file_idx):
 			contents[file_idx] = lines
 	return contents[file_idx]
 
+def _view_emoji_suffix(label):
+	e = _VIEW_EMOJI.get(label.lower(), '')
+	return f" {e}" if e else ''
+
 def _classify_section(header_line):
 	low = header_line.lower()
 	if 'done' in low or '✔️' in header_line or '✅' in header_line:
@@ -573,13 +579,13 @@ def printHeader(page, maxPage, file_idx, nfiles):
 	printFileStripInline(file_idx)
 
 	if _notes_mode and _notes_file:
-		view_tag = f" [{_overlay_label.upper()}]"
+		view_tag = f" [{_overlay_label.upper()}{_view_emoji_suffix(_overlay_label)}]"
 	elif VIEW_MODE != 'all':
-		view_tag = f" [{VIEW_MODE.upper()}]"
+		view_tag = f" [{VIEW_MODE.upper()}{_view_emoji_suffix(VIEW_MODE)}]"
 	else:
 		view_tag = ""
 	s3 = f"## page [{page+1}/{maxPage+1}]{view_tag} "
-	s3 += "#" * max(0, W - len(s3))
+	s3 += "#" * max(0, W - disp_width(s3))
 	p(s3)
 	p()
 
@@ -1181,7 +1187,7 @@ def print_help():
 	x=curses.COLS//3
 	p("a            - show All (reset view)",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("v            - cycle views all→todo→done→notes→all",color(COLOR_THEME))
+	p("v            - cycle views all→todo→done→notes📕→res📌→all",color(COLOR_THEME))
 	x=curses.COLS//3
 	p("  done view also shows git-history removed done items",color(COLOR_THEME))
 	x=curses.COLS//3
@@ -1546,24 +1552,24 @@ def main(stdscr):
 			_notes_mode = False; page = 0; maxPage = _maxpage(file_idx)
 
 		elif ch == ord('v'):
-			modes = ['all', 'todo', 'done', 'notes']
-			cur = 'notes' if _notes_mode else VIEW_MODE
+			modes = ['all', 'todo', 'done', 'notes', 'res']
+			cur = _overlay_label if _notes_mode else VIEW_MODE
+			if cur not in modes: cur = 'all'  # foreign overlay (week/…) → restart cycle
 			nxt = modes[(modes.index(cur) + 1) % len(modes)]
-			if nxt == 'notes':
-				nf = find_notes_file(files_with_path[file_idx])
-				if nf:
-					_notes_file    = nf
-					_notes_content = get_content_from_file(nf)
-					_prev_notes_view = VIEW_MODE
-					_notes_mode    = True
-					_overlay_label = 'notes'
+			for _ in range(len(modes)):  # advance, skipping overlays whose companion file is missing
+				if nxt in ('notes', 'res'):
+					tgt = (find_notes_file(files_with_path[file_idx]) if nxt == 'notes'
+					       else resolve_nav_target(_RES_SPEC, files_with_path[file_idx]))
+					if tgt:
+						_notes_file, _notes_content = tgt, get_content_from_file(tgt)
+						_prev_notes_view, _notes_mode, _overlay_label = VIEW_MODE, True, nxt
+						break
 				else:
-					nxt = 'all'  # skip notes if companion file missing
 					_notes_mode = False
-			else:
-				_notes_mode = False
-				_prev_view  = VIEW_MODE
-				VIEW_MODE   = nxt
+					_prev_view  = VIEW_MODE
+					VIEW_MODE   = nxt
+					break
+				nxt = modes[(modes.index(nxt) + 1) % len(modes)]
 			page = 0; maxPage = _maxpage(file_idx)
 
 		elif (32 <= ch < 127) and chr(ch) in NAV:  # quick-nav overlay (nav.conf): n=notes w=week …
