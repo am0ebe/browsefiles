@@ -4,15 +4,15 @@
 ## 📆
 
 ## 🔵
-- xpand 2 no-txt-files (pdfs, excel). how?
-	- 🔍filenames o 🔍 inside pdf w 🔧 + 🔍 inside excel / other filetypes?
-	- non-txt files: mk list + menu; select+enter ➡ open w `o()`; multi-select (1/all/some) ➡ open md w subl
 - in 'j' file list overview, add scroll mechanism (reuse existing menu class/func?)  
 - add file search (useful in big project) to not only search in files, but to search for files as well 
 - regex in find (prepend query w marker 2 switch mode)
-- quick add todo (shortcut ➡ append 2 cur file)
+- xpand 2 no-txt-files (pdfs, excel). how? 🛑
+	- 🔍filenames o 🔍 inside pdf w 🔧 + 🔍 inside excel / other filetypes?
+	- non-txt files: mk list + menu; select+enter ➡ open w `o()`; multi-select (1/all/some) ➡ open md w subl
 
 ## ✔️
+- `A` quick-add todo: prompt → insert line at top of `## 🔵` (or first header / EOF) → cache invalidated · auto-prefix `- `
 - DONE view: git log + file's own `## ✔️` section (via filter_content) — dropped "last 10 lines" tail
 - `v` view cycle now all→todo→done→notes📕→res📌→all (RES via `res.md res/res.md` overlay); header tags show emoji (DONE✔️/NOTES📕/RES📌); missing-companion overlays auto-skip
 - 🩹 printBIG crash + ↕️ render space: bounds-clip rows/width, center vertically, figlet width=COLS (`_safe_addstr`/`_render_big`) — fixes addwstr ERR on 'x'/"Nah :)"

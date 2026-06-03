@@ -913,6 +913,40 @@ def find_links_in_file(file_idx):
 			result.append([file_idx, lineno, line, [(m.start(), m.end())]])
 	return result or None
 
+def _insert_todo_line(path, line):
+	# insert under '## 🔵' backlog header (new→🔵 flow); else first header; else append at EOF
+	with open(path) as f:
+		lines = f.read().splitlines()
+	idx = next((i+1 for i, l in enumerate(lines) if l.strip().startswith('#') and '🔵' in l), None)
+	if idx is None:
+		idx = next((i+1 for i, l in enumerate(lines) if l.strip().startswith('#')), None)
+	if idx is None:
+		lines.append(line)
+	else:
+		lines.insert(idx, line)
+	with open(path, 'w') as f:
+		f.write('\n'.join(lines) + '\n')
+
+def quick_add_todo(file_idx):
+	global y, x
+	path = files_with_path[file_idx]
+	if os.path.isdir(path):
+		return
+	curses.echo()
+	gui.clear()
+	y = curses.LINES - 1; x = 0
+	p("+ todo (→ 🔵)? ")
+	try:
+		entry = gui.getstr().decode("utf-8").strip()
+	except Exception:
+		entry = ""
+	curses.noecho()
+	gui.clear()
+	if not entry:
+		return
+	_insert_todo_line(path, entry if entry.lstrip().startswith('-') else f"- {entry}")
+	contents[file_idx] = None  # invalidate cache → reload on next access
+
 def is_date_filter(fdef):
 	return "📆" in fdef['patterns'] or "⏰" in fdef['patterns']
 
@@ -1186,6 +1220,8 @@ def print_help():
 	p("t/d          - toggle Todo/Done view (press again to go back)",color(COLOR_THEME))
 	x=curses.COLS//3
 	p("a            - show All (reset view)",color(COLOR_THEME))
+	x=curses.COLS//3
+	p("A            - quick-add todo line to current file (→ 🔵)",color(COLOR_THEME))
 	x=curses.COLS//3
 	p("v            - cycle views all→todo→done→notes📕→res📌→all",color(COLOR_THEME))
 	x=curses.COLS//3
@@ -1550,6 +1586,10 @@ def main(stdscr):
 		elif ch in [ord('a')]:
 			VIEW_MODE = 'all'; _prev_view = 'all'
 			_notes_mode = False; page = 0; maxPage = _maxpage(file_idx)
+
+		elif ch == ord('A'):  # quick-add a todo line to current file (→ 🔵 backlog)
+			quick_add_todo(file_idx)
+			page = 0; maxPage = _maxpage(file_idx)
 
 		elif ch == ord('v'):
 			modes = ['all', 'todo', 'done', 'notes', 'res']
