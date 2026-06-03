@@ -1222,10 +1222,11 @@ def print_filelist(file_idx):
 		avail = max(1, curses.LINES - top - 1)        # rows for entries (keep last row for footer)
 		start = max(0, min(sel - avail // 2, max(0, n - avail)))
 		end   = min(n, start + avail)
+		w = max(2, len(str(n - 1)))                   # right-pad index so names align
 		for i in range(start, end):
 			x = curses.COLS // 3
 			attr = color(COLOR_THEME) | (curses.A_REVERSE | curses.A_BOLD if i == sel else 0)
-			p(f"{i}   {files[i]}", attr)
+			p(f"{i:>{w}}   {files[i]}", attr)
 		y = curses.LINES - 1; x = 0
 		p(f"[{sel+1}/{n}]  ↑↓/jk move · PgUp/Dn · Enter jump · q close", color(COLOR_THEME))
 
