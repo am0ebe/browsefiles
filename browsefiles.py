@@ -499,10 +499,10 @@ def git_done_content(file_path):
 
 	try:
 		with open(file_path) as f:
-			tail = f.read().splitlines()[-10:]
-		result += ['## 📄 last 10 lines', ''] + tail
+			lines = [l.rstrip() for l in f]
+		result += filter_content(lines, 'done')  # the file's own ## ✔️ section (header incl.)
 	except Exception:
-		result += ['## 📄 last 10 lines', '', '(error reading file)']
+		result += ['## ✔️', '', '(error reading file)']
 
 	_git_done_cache[file_path] = result
 	return result
