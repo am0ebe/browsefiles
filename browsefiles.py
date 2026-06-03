@@ -914,10 +914,10 @@ def find_links_in_file(file_idx):
 	return result or None
 
 _TODO_SECTIONS = {  # moji-prompt key → status-section header symbol (scaffold order)
-	'w': '⏳', 'd': '⏳',   # doing / wip
-	'!': '‼️', '1': '‼️',   # committed
-	'c': '📆',               # calendar
-	'b': '🔵',               # backlog (default)
+	'w': '⏳', 'd': '⏳', '1': '⏳',   # doing / wip
+	'!': '‼️', '2': '‼️',             # committed
+	'c': '📆', '3': '📆',             # calendar
+	'b': '🔵', '4': '🔵',             # backlog (default)
 }
 
 def _insert_todo_line(path, line, sect='🔵'):
@@ -954,7 +954,7 @@ def quick_add_todo(file_idx):
 	# pick status section via single moji key (Enter/unknown → 🔵)
 	gui.clear()
 	y = curses.LINES - 1; x = 0
-	p("moji?  ⏳=w  ‼️=!  📆=c  🔵=b  (def 🔵): ")
+	p("moji?  ⏳=w/1  ‼️=!/2  📆=c/3  🔵=b/4  (def 🔵): ")
 	k = gui.getch()
 	sect = _TODO_SECTIONS.get(chr(k), '🔵') if 0 <= k < 256 else '🔵'
 	gui.clear()
