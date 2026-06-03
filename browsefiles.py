@@ -1577,12 +1577,14 @@ def main(stdscr):
 
 			curses.echo()
 			gui.clear()
-			y=curses.LINES-3; x=0
-			p("regex egs: /a|b (either) · /^## (line-start) · /\\d{4} (4 digits) · /a.*b (a…b) · /\\bTODO (word)")
-			y=curses.LINES-2; x=0
+			y=0; x=0
+			p("/=regex")
+			y=1; x=0
+			p("regex egs: a|b (either) · ^## (line-start) · \\d{4} (4 digits) · a.*b (a…b)")
+			y=2; x=0
 			p("(no / prefix = literal substring)")
 			y=curses.LINES-1; x=0
-			p("find (/=regex)? ")
+			p("find? ")
 			y=0
 
 			if GLOBAL_SEARCH:
