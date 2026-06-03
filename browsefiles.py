@@ -1210,12 +1210,13 @@ def print_filelist(file_idx):
 	if n == 0:
 		return file_idx
 	sel = file_idx
-	banner = pyfiglet.Figlet(font='small', width=max(curses.COLS, 1)).renderText("LIST").split("\n")
+	banner       = pyfiglet.Figlet(font='small', width=max(curses.COLS, 1)).renderText("LIST").split("\n")
+	banner_attrs = [color() for _ in banner]          # fixed colorful per-line (stable across redraws)
 	while True:
 		gui.clear()
 		y = 0
-		for s in banner:                              # fixed banner (no per-frame font jitter)
-			_safe_addstr(y, curses.COLS // 3, s, color(COLOR_THEME))
+		for s, a in zip(banner, banner_attrs):        # fixed banner: no per-frame font/color jitter
+			_safe_addstr(y, curses.COLS // 3, s, a)
 			y += 1
 		top   = y
 		avail = max(1, curses.LINES - top - 1)        # rows for entries (keep last row for footer)
@@ -1606,13 +1607,18 @@ def main(stdscr):
 
 			curses.echo()
 			gui.clear()
-			y=0; x=0
+			fb = pyfiglet.Figlet(font='small', width=max(curses.COLS, 1)).renderText("FIND").split("\n")
+			y = 0
+			for s in fb:                              # colorful FIND banner
+				_safe_addstr(y, curses.COLS // 3, s, color())
+				y += 1
+			y += 1; x=0
 			p("/=regex")
-			y=1; x=0
+			x=0
 			p("regex egs: a|b (either) · ^## (line-start) · done$ (line-end) · \\d{4} (4 digits)")
-			y=2; x=0
+			x=0
 			p("           a.*b (a…b) · (foo|bar) (group) · (ab)+ (repeat) · [aeiou] (charclass)")
-			y=3; x=0
+			x=0
 			p("(no / prefix = literal substring)")
 			y=curses.LINES-1; x=0
 			p("find? ")
