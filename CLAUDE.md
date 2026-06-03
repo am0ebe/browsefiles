@@ -53,8 +53,14 @@ filelist_all
 `filelist_te` uses same pattern for ml/, ag/, sys/ sub-areas.
 `filelist_te_ag` → `^filelist_te` + `~/gopro/go/te/ag/**`
 
-## Cluster files
-`filelist_cluster1/2/3` group multiple areas in filelist_all. Not used for pr/ (pr/ zooms directly to filelist_pr).
+## 3-layer hierarchy (browse.conf)
+`[all]` (2d) → `[work]`/`[life]` (2w/2l) → each area/project section.
+- **Layer 1** `[all]`: every area/project todo, but each entry's kid = its *cluster* (`> work`/`> life`) — so right-arrow groups them. Unclustered (tr, bf) zoom direct to own section.
+- **Layer 2** `[work]`/`[life]` (`^all`): cluster's todos, each `> section` → its area. work = scagent/te/le/bigbro/audio/demo/sys/kb · life = aa/bx/mv/po/re/so/te/kb. te+kb appear in both.
+- **Layer 3** area sections: the files.
+
+Back-nav: life-exclusive areas `^life`, le `^work`; te/kb (dual) + work pr-projects keep `^dev`/`^pr` (also reachable via `[dev]`/`[pr]` views).
+Aliases `2w`/`2l` (+ `2w!`/`2l!` ‼️-filtered) manual in `.common.sh`; `work`/`life` in auto-gen `_bskip` (cluster meta, no cd/`*2` alias) — mirrors `all`/`2d`.
 
 ## Key browsefiles.py internals
 - `parse_filelist()`: reads filelist, expands globs, builds `files_with_path` + `files_with_kid`
