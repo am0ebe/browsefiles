@@ -1203,6 +1203,26 @@ class Menu:
 
 			self.show()
 
+_REGEX_EGS = [
+	[("a|b", "either"), ("^##", "line-start"), ("done$", "line-end"), (r"\d{4}", "4 digits")],
+	[("a.*b", "a…b"),   ("(foo|bar)", "group"), ("(ab)+", "repeat"),  ("[aeiou]", "charclass")],
+]
+
+def draw_regex_help(y0):
+	# bold-colored patterns + dim descriptions; returns next free row
+	global x, y
+	y = y0; x = 0
+	p("/ prefix 4 regex, eg:", color(COLOR_THEME) | curses.A_BOLD)
+	for row in _REGEX_EGS:
+		x = 4
+		for j, (pat, desc) in enumerate(row):
+			if j:
+				p("  ·  ", curses.A_DIM, add_newline=False)
+			p(pat, color(COLOR_THEME) | curses.A_BOLD, add_newline=False)
+			p(f" ({desc})", curses.A_DIM, add_newline=False)
+		p("")  # end row
+	return y
+
 def print_filelist(file_idx):
 	# scrollable file picker: ↑↓/j/k move · PgUp/Dn · Home/End · Enter jump · q/Esc close
 	global x, y
@@ -1613,14 +1633,7 @@ def main(stdscr):
 			for s in fb:                              # colorful FIND banner
 				_safe_addstr(y, curses.COLS // 3, s, color())
 				y += 1
-			y += 1; x=0
-			p("/=regex")
-			x=0
-			p("regex egs: a|b (either) · ^## (line-start) · done$ (line-end) · \\d{4} (4 digits)")
-			x=0
-			p("           a.*b (a…b) · (foo|bar) (group) · (ab)+ (repeat) · [aeiou] (charclass)")
-			x=0
-			p("(no / prefix = literal substring)")
+			draw_regex_help(y + 1)
 			y=curses.LINES-1; x=0
 			p("find? ")
 			y=0
