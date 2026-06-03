@@ -1204,20 +1204,49 @@ class Menu:
 			self.show()
 
 def print_filelist(file_idx):
-
+	# scrollable file picker: ↑↓/j/k move · PgUp/Dn · Home/End · Enter jump · q/Esc close
 	global x, y
-	gui.clear()
-	y,x=printBIG2(" __ LIST  __ ")
-	x=curses.COLS//3
-	for i, file in enumerate(files):
-		x=curses.COLS//3
-		if i == file_idx:
-			p(str(i)+"   "+file,color(COLOR_THEME) | curses.A_REVERSE | curses.A_BOLD)
-		else:
-			p(str(i)+"   "+file,color(COLOR_THEME))
+	n = len(files)
+	if n == 0:
+		return file_idx
+	sel = file_idx
+	banner = pyfiglet.Figlet(font='small', width=max(curses.COLS, 1)).renderText("LIST").split("\n")
+	while True:
+		gui.clear()
+		y = 0
+		for s in banner:                              # fixed banner (no per-frame font jitter)
+			_safe_addstr(y, curses.COLS // 3, s, color(COLOR_THEME))
+			y += 1
+		top   = y
+		avail = max(1, curses.LINES - top - 1)        # rows for entries (keep last row for footer)
+		start = max(0, min(sel - avail // 2, max(0, n - avail)))
+		end   = min(n, start + avail)
+		for i in range(start, end):
+			x = curses.COLS // 3
+			attr = color(COLOR_THEME) | (curses.A_REVERSE | curses.A_BOLD if i == sel else 0)
+			p(f"{i}   {files[i]}", attr)
+		y = curses.LINES - 1; x = 0
+		p(f"[{sel+1}/{n}]  ↑↓/jk move · PgUp/Dn · Enter jump · q close", color(COLOR_THEME))
 
-	gui.getch()
-	gui.clear()
+		ch = gui.getch()
+		if ch in (curses.KEY_UP, ord('k')):
+			sel = (sel - 1) % n
+		elif ch in (curses.KEY_DOWN, ord('j')):
+			sel = (sel + 1) % n
+		elif ch == curses.KEY_NPAGE:
+			sel = min(n - 1, sel + avail)
+		elif ch == curses.KEY_PPAGE:
+			sel = max(0, sel - avail)
+		elif ch == curses.KEY_HOME:
+			sel = 0
+		elif ch == curses.KEY_END:
+			sel = n - 1
+		elif ch in (curses.KEY_ENTER, 10, 13):
+			gui.clear()
+			return sel
+		elif ch in (27, ord('q')):
+			gui.clear()
+			return file_idx
 
 def print_help():
 	global x, y
@@ -1285,7 +1314,7 @@ def print_help():
 	x=curses.COLS//3
 	p("f1..10       - jump to file",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("j            - show file list",color(COLOR_THEME))
+	p("j            - file picker (scroll ↑↓/jk · Enter jump · q close)",color(COLOR_THEME))
 	x=curses.COLS//3
 	p("c            - copy selected line",color(COLOR_THEME))
 	x=curses.COLS//3
@@ -1717,7 +1746,10 @@ def main(stdscr):
 			elif ch == curses.KEY_F10:
 				file_idx=len(files)-1
 			elif ch in [ ord('j'), curses.KEY_DC ]:
-				print_filelist(file_idx)
+				new_idx = print_filelist(file_idx)
+				if new_idx != file_idx:
+					file_idx = new_idx
+					page = 0; maxPage = _maxpage(file_idx)
 
 
 
