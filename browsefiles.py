@@ -159,7 +159,10 @@ FILTER_CONFIG = os.path.expanduser("~/.config/user/browsefiles/filters.conf")
 FILTERS = {}  # key_char -> fdef dict (aliases share same dict object)
 
 editor = "subl"
-parent = ""
+parent = ""        # static ^parent from the conf section (fallback when nav-stack empty)
+NAV_STACK = []     # breadcrumb of ancestor sections actually traversed (root-first, excl. current)
+                   # passed child→child via BF_STACK env → zoom-out/sideways follow the real path,
+                   # not the static ^parent (fixes multi-entry sections: te/kb/scagent/…)
 filelist = ""
 
 # ---------------------------------------------------------------------------
@@ -1291,7 +1294,7 @@ def print_help():
 	x=curses.COLS//3
 	p("-/_ ctrl+↓   - ⇩ zoom in",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("[/]          - ⇦/⇨ prev/next sibling filelist",color(COLOR_THEME))
+	p("[ ] tab/⇧tab - ⇦/⇨ prev/next sibling (cluster lvl: work⇄life toggle)",color(COLOR_THEME))
 	x=curses.COLS//3
 	p("f,/          - find (context expansion) · prefix query w / for regex",color(COLOR_THEME))
 	x=curses.COLS//3
@@ -1410,6 +1413,7 @@ def zoom_in(file_idx):
 	cur_file = files_with_path[file_idx]
 	os.environ['BF_INITIAL_FILE'] = cur_file   # child: select this file on zoom-back-out
 	os.environ['BF_ZOOM_SOURCE']  = cur_file   # child stores this; used when it zooms out
+	os.environ['BF_STACK'] = '\x1f'.join(NAV_STACK + [filelist_with_path])  # push self → child's real parent
 	if kid.startswith("__dir__:"):
 		dirpath = kid[8:]
 		with tempfile.NamedTemporaryFile(mode='w', suffix='.fl', delete=False, prefix='bf_') as tf:
@@ -1424,8 +1428,14 @@ def zoom_in(file_idx):
 		exit()
 
 def zoom_out():
-	if parent:
-		# _zoom_source = the file in the parent that zoomed us in here → select it on return
+	if NAV_STACK:                                # follow the real path back
+		target = NAV_STACK[-1]
+		os.environ['BF_STACK'] = '\x1f'.join(NAV_STACK[:-1])
+		os.environ['BF_INITIAL_FILE'] = _zoom_source if _zoom_source else filelist_with_path
+		os.system(f"{sys.argv[0]} {target}")
+		exit()
+	elif parent:                                 # fallback: static ^parent (direct-entry, no breadcrumb)
+		os.environ.pop('BF_STACK', None)
 		os.environ['BF_INITIAL_FILE'] = _zoom_source if _zoom_source else filelist_with_path
 		os.system(f"{sys.argv[0]} {parent}")
 		exit()
@@ -1484,12 +1494,15 @@ def zoom_side(isRight=False):
 
 	idx     = kids.index(cur)
 	sibling = kids[(idx + (1 if isRight else -1)) % len(kids)]
+	# sibling is at the SAME level under the SAME parent → keep the breadcrumb unchanged
+	# (seed [parent] on direct entry so the sibling inherits the same ring context)
+	os.environ['BF_STACK'] = '\x1f'.join(NAV_STACK if NAV_STACK else [parent])
 	os.system(f"{sys.argv[0]} {sibling}")
 	exit()
 
 def main(stdscr):
 
-	global x, y, gui, maxPage, GLOBAL_SEARCH, CURRENT_FILTER, _zoom_source, THEME_IDX
+	global x, y, gui, maxPage, GLOBAL_SEARCH, CURRENT_FILTER, _zoom_source, THEME_IDX, parent, NAV_STACK
 	global VIEW_MODE, _prev_view, _notes_mode, _notes_content, _notes_file, _prev_notes_view, _overlay_label
 
 	gui = stdscr
@@ -1497,6 +1510,13 @@ def main(stdscr):
 	parse_filelist(sys.argv[1])
 	GLOBAL_SEARCH = " ".join(sys.argv[2:])
 	_zoom_source  = os.environ.pop('BF_ZOOM_SOURCE', '')  # file that zoomed us in here
+
+	# breadcrumb: the section we actually came from overrides the static ^parent.
+	# empty stack = direct entry (alias jump) → keep the conf's ^parent as fallback.
+	_stk = os.environ.pop('BF_STACK', '')
+	NAV_STACK = _stk.split('\x1f') if _stk else []
+	if NAV_STACK:
+		parent = NAV_STACK[-1]
 
 	init_curses()
 
@@ -1607,10 +1627,10 @@ def main(stdscr):
 		elif ch in [ ord('-'), ord('_'), 336, 526 ] : # shift/ctrl+down
 			zoom_in(file_idx)
 
-		elif ch in [ ord('[') ]:
+		elif ch in [ ord('['), curses.KEY_BTAB ]:   # [ or ⇧tab → prev sibling
 			zoom_side(isRight=False)
 
-		elif ch in [ ord(']') ]:
+		elif ch in [ ord(']'), ord('\t') ]:          # ] or tab → next sibling
 			zoom_side(isRight=True)
 
 		elif ch == curses.KEY_F9:

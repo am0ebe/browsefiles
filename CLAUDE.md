@@ -55,17 +55,19 @@ filelist_all
 
 ## 3-layer hierarchy (browse.conf)
 `[all]` (2d) → `[work]`/`[life]` (2w/2l) → each area/project section.
-- **Layer 1** `[all]`: every area/project todo, but each entry's kid = its *cluster* (`> work`/`> life`) — so right-arrow groups them. Unclustered (tr, bf) zoom direct to own section.
-- **Layer 2** `[work]`/`[life]` (`^all`): cluster's todos, each `> section` → its area. work = scagent/te/le/bigbro/audio/demo/sys/kb · life = aa/bx/mv/po/re/so/te/kb. te+kb appear in both.
-- **Layer 3** area sections: the files.
+- **Layer 1** `[all]`: every area/project todo, each entry's kid = its *cluster* (`> work`/`> life`) — right-arrow groups them. The cluster ring is exactly {work, life}, so `[`/`]`/**tab** is a clean **work⇄life** toggle (sideways nav: `]`/tab=next, `[`/⇧tab=prev).
+- **Layer 2** `[work]`/`[life]` (`^all`): cluster's todos, each `> section` → its area. work = scagent/te/le/bigbro/audio/demo/sys/kb/**bf** · life = aa/bx/mv/po/re/so/te/kb/**tr**. te+kb appear in both.
+- **Layer 3** area sections: the files. **tr nests under life, bf under work** (travel=life, browsefiles=dev) — reached one level deeper (all→life→tr, all→work→bf), NOT cluster peers.
 
-Back-nav: life-exclusive areas `^life`, le `^work`; te/kb (dual) + work pr-projects keep `^dev`/`^pr` (also reachable via `[dev]`/`[pr]` views).
+**Breadcrumb nav (the `^parent` is now only a fallback):** zoom-in pushes the current section onto a `BF_STACK` env breadcrumb, so zoom-out/sideways follow the *path you actually took*, not the static `^parent`. This fixes multi-entry sections (te/kb in work+life; scagent/sys/demo/bf in work+pr/dev): e.g. `2w`→te→out now returns to **work**, and sideways from te cycles **work's** kids — not dev's. The conf `^parent` is used only on **direct entry** (alias jumps like `k2`,`5`) where there's no breadcrumb. Static parents: life areas (incl tr) `^life`, le/bf `^work`, te/kb + pr-projects `^dev`/`^pr`.
 Aliases `2w`/`2l` (+ `2w!`/`2l!` ‼️-filtered) manual in `.common.sh`; `work`/`life` in auto-gen `_bskip` (cluster meta, no cd/`*2` alias) — mirrors `all`/`2d`.
 
 ## Key browsefiles.py internals
 - `parse_filelist()`: reads filelist, expands globs, builds `files_with_path` + `files_with_kid`
 - `files_with_kid`: parallel list — kid filelist path per file (space `" "` if no kid)
-- Right key on a file with kid → calls `parse_filelist(kid)` to zoom in
-- Left key → calls `parse_filelist(parent)` to zoom out
+- Right key on a file with kid → relaunches on the kid section to zoom in (pushes self onto `BF_STACK`)
+- Left key → `zoom_out()`: pops `BF_STACK` to the real parent; only if stack empty falls back to static `^parent`
+- `[`/`]`/tab/⇧tab → `zoom_side()`: cycles the *breadcrumb* parent's kids (not static `^`); seeds `[parent]` on direct entry
+- `NAV_STACK` (global) ⇄ `BF_STACK` (env, `\x1f`-joined): breadcrumb of ancestor sections, root-first, excl. current
 - `make_abs_filepath()`: expands `~`, resolves relative paths, runs glob with `recursive=True`
 - Sort: zip(kid, path) sorted together, then todos floated to top
