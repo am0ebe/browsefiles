@@ -280,6 +280,13 @@ def _read_conf_section(conf_abs, section_name):
 	return lines
 
 
+def strip_inline_comment(s):
+	"""Drop a trailing ' #comment' so copied lines paste clean into zsh (no interactive_comments).
+	Anchors on the LAST ' #' → leaves URL frags (a#b), headings (## x) and
+	quoted/literal hashes (\"msg #5\", #fff) intact."""
+	return re.sub(r'^(.*\S)\s+#.*$', r'\1', s)
+
+
 def parse_filelist(filelist_):
 	#call before init_curses!
 	global files_with_path, files_with_kid, filelist_with_path, filelist
@@ -1193,11 +1200,11 @@ class Menu:
 
 			elif ch == ord('c') and not self.flat:  # in date/flat menus 'c' falls through → exit (toggle back)
 
-				cur_line=self.res[self.current_row][2].replace('	',' ')
+				cur_line=strip_inline_comment(self.res[self.current_row][2].replace('	',' '))
 				xerox.copy(cur_line)
 
 			elif ch in [ ord('x'), ord('v')]:
-				cur_line=self.res[self.current_row][2].replace('	',' ')
+				cur_line=strip_inline_comment(self.res[self.current_row][2].replace('	',' '))
 				xerox.copy(cur_line)
 				exit()
 
