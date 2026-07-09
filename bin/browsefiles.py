@@ -647,6 +647,11 @@ def color(cid=-1):
 	return curses.color_pair(cid) | curses.A_BOLD
 
 
+_MOJI_PAD_RE = re.compile(r'(↕️|↔️|❄️)(?=\S)')  # narrow-base VS16 emoji render cramped → pad 1 space
+
+def pad_moji(line):
+	return _MOJI_PAD_RE.sub(r'\1 ', line)
+
 def printPage(page, content, header):
 	start = page * (curses.LINES - header)
 	end = start + (curses.LINES - header)
@@ -655,7 +660,7 @@ def printPage(page, content, header):
 	while start <= idx < end:
 		if idx >= len(content):
 			break
-		p(content[idx], highlight=True)
+		p(pad_moji(content[idx]), highlight=True)
 		idx+=1
 
 def p(msg="", attr=0, add_newline=True, highlight=False):
@@ -688,7 +693,7 @@ def p(msg="", attr=0, add_newline=True, highlight=False):
 # ---------------------------------------------------------------------------
 # search
 
-def find(query=""):
+def find(query="", include_done=True):
 
 	if query == "":
 		query = gui.getstr().decode("utf-8") #convert bytestring to string
@@ -707,7 +712,13 @@ def find(query=""):
 
 	result = []
 	for file_idx in range(len(files)):
+		cur_sec = 'todo'  # lines before any header count as todo
 		for lineno, line in enumerate(get_content(file_idx), 1):
+
+			if line.strip().startswith('#'):
+				cur_sec = _classify_section(line)
+			if not include_done and cur_sec == 'done':
+				continue  # 'f' skips ## ✔️ section; 'F' includes all
 
 			positions = [(m.start(), m.end()) for m in pat.finditer(line) if m.end() > m.start()]
 
@@ -1234,12 +1245,13 @@ def draw_regex_help(y0):
 	return y
 
 def print_filelist(file_idx):
-	# scrollable file picker: ↑↓/j/k move · PgUp/Dn · Home/End · Enter jump · q/Esc close
+	# scrollable file picker: ↑↓/j/k move · PgUp/Dn · Home/End · type index# · Enter jump · q/Esc close
 	global x, y
 	n = len(files)
 	if n == 0:
 		return file_idx
 	sel = file_idx
+	numbuf = ''                                       # typed file index (number-jump)
 	banner       = pyfiglet.Figlet(font='small', width=max(curses.COLS, 1)).renderText("LIST").split("\n")
 	banner_attrs = [color() for _ in banner]          # fixed colorful per-line (stable across redraws)
 	while True:
@@ -1258,9 +1270,22 @@ def print_filelist(file_idx):
 			attr = color(COLOR_THEME) | (curses.A_REVERSE | curses.A_BOLD if i == sel else 0)
 			p(f"{i:>{w}}   {files[i]}", attr)
 		y = curses.LINES - 1; x = 0
-		p(f"[{sel+1}/{n}]  ↑↓/jk move · PgUp/Dn · Enter jump · q close", color(COLOR_THEME))
+		foot = f"goto {numbuf}_" if numbuf else "↑↓/jk move · PgUp/Dn · #/Enter jump · q close"
+		p(f"[{sel+1}/{n}]  {foot}", color(COLOR_THEME))
 
 		ch = gui.getch()
+		if 32 <= ch < 127 and chr(ch).isdigit():
+			numbuf += chr(ch)
+			val = int(numbuf)
+			sel = min(val, n - 1)                      # preview highlight on typed index
+			if numbuf[0] == '0' or val * 10 > n - 1:   # no larger index shares this prefix → jump+select
+				gui.clear()
+				return sel
+			continue
+		if numbuf and ch in (curses.KEY_BACKSPACE, 127, 8):
+			numbuf = numbuf[:-1]
+			continue
+		numbuf = ''                                   # any other key ends number entry
 		if ch in (curses.KEY_UP, ord('k')):
 			sel = (sel - 1) % n
 		elif ch in (curses.KEY_DOWN, ord('j')):
@@ -1303,7 +1328,9 @@ def print_help():
 	x=curses.COLS//3
 	p("[ ] tab/⇧tab - ⇦/⇨ prev/next sibling (cluster lvl: work⇄life toggle)",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("f,/          - find (context expansion) · prefix query w / for regex",color(COLOR_THEME))
+	p("f,/          - find (skips ## ✔️ done) · prefix query w / for regex",color(COLOR_THEME))
+	x=curses.COLS//3
+	p("F            - find all (incl ## ✔️ done section)",color(COLOR_THEME))
 	x=curses.COLS//3
 	p("  regex egs: /a|b (either) · /^## (line-start) · /\\d{4} (4 digits) · /a.*b (a…b) · /\\bTODO (word)",color(COLOR_THEME))
 	x=curses.COLS//3
@@ -1346,7 +1373,7 @@ def print_help():
 	x=curses.COLS//3
 	p("f1..10       - jump to file",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("j            - file picker (scroll ↑↓/jk · Enter jump · q close)",color(COLOR_THEME))
+	p("j            - file picker (↑↓/jk · type #/Enter jump · q close)",color(COLOR_THEME))
 	x=curses.COLS//3
 	p("c            - copy selected line",color(COLOR_THEME))
 	x=curses.COLS//3
@@ -1651,11 +1678,13 @@ def main(stdscr):
 		elif ch == curses.KEY_END:
 			page=maxPage
 
-		elif ch in [ ord('f'), ord('/') ]:
+		elif ch in [ ord('f'), ord('/'), ord('F') ]:
 
+			include_done = (ch == ord('F'))           # 'f'/'/' skip ## ✔️ · 'F' find all
 			curses.echo()
 			gui.clear()
-			fb = pyfiglet.Figlet(font='small', width=max(curses.COLS, 1)).renderText("FIND").split("\n")
+			label = "FIND ALL" if include_done else "FIND"
+			fb = pyfiglet.Figlet(font='small', width=max(curses.COLS, 1)).renderText(label).split("\n")
 			y = 0
 			for s in fb:                              # colorful FIND banner
 				_safe_addstr(y, curses.COLS // 3, s, color())
@@ -1667,10 +1696,10 @@ def main(stdscr):
 
 			if GLOBAL_SEARCH:
 				CURRENT_FILTER = GLOBAL_SEARCH
-				res=find(GLOBAL_SEARCH)
+				res=find(GLOBAL_SEARCH, include_done)
 				GLOBAL_SEARCH = ""
 			else:
-				res=find()
+				res=find(include_done=include_done)
 
 			if res:
 				Menu(expand_with_context(res) or res)
