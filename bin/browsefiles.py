@@ -1373,7 +1373,7 @@ def print_help():
 	x=curses.COLS//3
 	p("f1..10       - jump to file",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("j            - file picker (↑↓/jk · type #/Enter jump · q close)",color(COLOR_THEME))
+	p("l, j         - file picker / list (↑↓/jk · type #/Enter jump · q close)",color(COLOR_THEME))
 	x=curses.COLS//3
 	p("c            - copy selected line",color(COLOR_THEME))
 	x=curses.COLS//3
@@ -1387,7 +1387,7 @@ def print_help():
 	x=curses.COLS//3
 	p("E            - edit all files",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("l            - edit file list",color(COLOR_THEME))
+	p("P            - edit file list / conf",color(COLOR_THEME))
 	x=curses.COLS//3
 	p("p            - edit source",color(COLOR_THEME))
 	x=curses.COLS//3
@@ -1594,7 +1594,7 @@ def main(stdscr):
 		if ch in [ ord('q'), 27 ]: #ESC
 			break
 
-		elif ch in [ ord('l') ]:
+		elif ch in [ ord('P') ]:   # edit the conf/filelist (was 'l' — now 'l' = file picker)
 			target = sys.argv[1]
 			if ':' in os.path.basename(target):
 				target = target.rsplit(':', 1)[0]  # open conf file, not conf:section string
@@ -1821,7 +1821,7 @@ def main(stdscr):
 				file_idx=len(files)-1
 			elif ch == curses.KEY_F10:
 				file_idx=len(files)-1
-			elif ch in [ ord('j'), curses.KEY_DC ]:
+			elif ch in [ ord('j'), ord('l'), curses.KEY_DC ]:
 				new_idx = print_filelist(file_idx)
 				if new_idx != file_idx:
 					file_idx = new_idx
