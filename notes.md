@@ -8,10 +8,7 @@ aliases: te2 ag2 ml2 sy2 pr2 le2 aa2 + ‼️ variants
 active — core KB navigation tool. continuously maintained.
 
 ## todo
-- U/I annotations (urgency 1-5, importance 1-5, time estimate)
-- mobile-sync filter (exclude large dirs from filelist view)
-- auto-backlinks
-- fix make_book_template() path → `$GO/re/boox/notes` when resumed
+→ `todo_browsefiles.md` (status scaffold — single SSOT)
 
 ## notes
 curses TUI. reads filelist configs line by line.

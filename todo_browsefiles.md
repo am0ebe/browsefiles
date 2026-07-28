@@ -9,6 +9,10 @@
 - xpand 2 no-txt-files (pdfs, excel). how? 🛑
 	- 🔍filenames o 🔍 inside pdf w 🔧 + 🔍 inside excel / other filetypes?
 	- non-txt files: mk list + menu; select+enter ➡ open w `o()`; multi-select (1/all/some) ➡ open md w subl
+- U/I annotations — urg 1-5, imp 1-5, ti est
+- mobile-sync filter — excl ⇧ dirs f filelist view
+- auto-backlinks
+- fix `make_book_template()` path ➡ `$GO/re/boox/notes` (when resumed)
 
 ## ✔️
 - top symb bar should be narrower so theres no line break. or best just fill hspace dynamically.
