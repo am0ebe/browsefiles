@@ -14,8 +14,16 @@
 #	curses key combination can change (different OS, terminal)
 #	use curses_key.py to find out keycode and adjust accordingly
 
-import xerox #pip3 install -U xerox # api xclip
 import os
+try:
+	import xerox #pip3 install -U xerox # api xclip
+except ImportError:  # lap (Arch): no pip in system py ➡ wl-copy (Wayland) / xclip directly
+	class xerox:
+		@staticmethod
+		def copy(s):
+			import shutil, subprocess
+			wl = os.getenv("WAYLAND_DISPLAY") and shutil.which("wl-copy")
+			subprocess.run(["wl-copy"] if wl else ["xclip", "-selection", "clipboard"], input=s, text=True)
 import sys
 import curses
 import re
