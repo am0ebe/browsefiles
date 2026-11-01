@@ -105,14 +105,12 @@ def _osc_query(code):
 		old = termios.tcgetattr(fd)
 		tty.setraw(fd)
 		os.write(fd, f'\033]{code};?\007'.encode())
-		ready, _, _ = select.select([fd], [], [], 0.3)
 		resp = b''
-		if ready:
-			for _ in range(64):
-				c = os.read(fd, 4)
-				resp += c
-				if b'\007' in c or b'\033\\' in c:
-					break
+		# evy read select-guarded: split/missing terminator ➡ timeout, not a raw-mode block (herdr: ST split across chunks)
+		while select.select([fd], [], [], 0.3)[0] and len(resp) < 256:
+			resp += os.read(fd, 64)
+			if b'\007' in resp or b'\033\\' in resp:
+				break
 		termios.tcsetattr(fd, termios.TCSADRAIN, old)
 		return resp.decode('ascii', errors='ignore')
 	except Exception:
