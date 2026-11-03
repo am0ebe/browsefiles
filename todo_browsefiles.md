@@ -1,5 +1,5 @@
 ## ⏳
-- ✔️ @1101 2d freeze i herdr fixed (`_osc_query` select-guarded reads) · tstd i a herdr pane · ▶ NEXT: 🦠 use 2d i herdr normally, freeze back? ➡ reopen
+- 🦠 OSC 11 theme-query fallout — watch: @1101 freeze (select-guarded reads) · @1103 `cmds X` results closed by a **late** reply ➡ `getkey()` swallows it + Menu ignores resize (strix: "worx") · ▶ NEXT: use bf i herdr normally, freeze / menu-close back? ➡ reopen
 
 ## ‼️
 
@@ -15,7 +15,7 @@
 - auto-backlinks
 - fix `make_book_template()` path ➡ `$GO/re/boox/notes` (when resumed)
 - 🤖 i herdr theme alw = night: herdr answers OSC 11 w `rgb:0000/0000/0000` (nt th real bg) ➡ `BF_THEME` env override o skip query when `TERM_PROGRAM=herdr`
-- 🤖 tst `_osc_query` w a pty: reply split mid-terminator (`…\x1b` | `\\`) + no reply ➡ must return ≤~0.3s (raw-mode freeze @1030, fix only tstd by hand)
+- 🤖 tst `_osc_query` w a pty: reply split mid-terminator (`…\x1b` | `\\`) + no reply ➡ must return ≤~0.3s (raw-mode freeze @1030, fix only tstd by hand) · + **late** reply (aft timeout) ➡ `getkey()` swallows it, `cmds X` menu stays up (@1103, pty harness i git msg)
 
 ## ✔️
 - top symb bar should be narrower so theres no line break. or best just fill hspace dynamically.

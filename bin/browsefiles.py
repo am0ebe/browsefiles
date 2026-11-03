@@ -116,6 +116,29 @@ def _osc_query(code):
 	except Exception:
 		return ''
 
+def getkey():
+	"""gui.getch() minus a late OSC reply (ESC ] … BEL/ST): a theme-query answer slower than
+	_osc_query's timeout lands i curses input ➡ its ESC closed th `cmds X` results / quit th main loop."""
+	while True:
+		ch = gui.getch()
+		if ch != 27:
+			return ch
+		gui.nodelay(True)
+		nxt = gui.getch()
+		gui.nodelay(False)
+		if nxt != ord(']'):
+			if nxt != -1:
+				curses.ungetch(nxt)
+			return 27  # real ESC (or alt-combo)
+		gui.timeout(100)  # swallow th OSC body up 2 BEL or ST
+		prev = None
+		while True:
+			c = gui.getch()
+			if c in (-1, 7) or (prev == 27 and c == ord('\\')):
+				break
+			prev = c
+		gui.timeout(-1)
+
 def _parse_rgb(osc_resp):
 	"""Parse 'rgb:RRRR/GGGG/BBBB' from OSC response → '#rrggbb'."""
 	m = re.search(r'rgb:([0-9a-fA-F]+)/([0-9a-fA-F]+)/([0-9a-fA-F]+)', osc_resp)
@@ -1163,10 +1186,13 @@ class Menu:
 
 	def run(self):
 		while True:
-			ch = gui.getch()
+			ch = getkey()
 			gui.clear()
 
-			if ch == curses.KEY_DOWN:
+			if ch == curses.KEY_RESIZE:  # redraw, don't close
+				self.lines_page = curses.LINES - 1
+
+			elif ch == curses.KEY_DOWN:
 				self.cursor(1)
 				self.updatePage()
 
@@ -1279,7 +1305,7 @@ def print_filelist(file_idx):
 		foot = f"goto {numbuf}_" if numbuf else "↑↓/jk move · PgUp/Dn · #/Enter jump · q close"
 		p(f"[{sel+1}/{n}]  {foot}", color(COLOR_THEME))
 
-		ch = gui.getch()
+		ch = getkey()
 		if 32 <= ch < 127 and chr(ch).isdigit():
 			numbuf += chr(ch)
 			val = int(numbuf)
@@ -1593,7 +1619,7 @@ def main(stdscr):
 		if GLOBAL_SEARCH:
 			ch = ord('f') #find
 		else:
-			ch = gui.getch()
+			ch = getkey()
 
 		gui.clear()
 
@@ -1706,6 +1732,7 @@ def main(stdscr):
 				GLOBAL_SEARCH = ""
 			else:
 				res=find(include_done=include_done)
+			curses.noecho()  # echo only 4 getstr ➡ Menu keys (+ stray input) not painted
 
 			if res:
 				Menu(expand_with_context(res) or res)
