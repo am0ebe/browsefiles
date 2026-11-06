@@ -69,7 +69,7 @@ def kid_idx(section):
 
 def do_zoom_in(section):  boot_target = _run(bf.zoom_in, kid_idx(section)); return boot_target
 def do_zoom_out():        return _run(bf.zoom_out)
-def do_zoom_side(right):  return _run(bf.zoom_side, right)
+def do_zoom_side(right, step=1): return _run(bf.zoom_side, right, step)
 
 # ── assertion plumbing ──────────────────────────────────────────────────────
 _fails = []
@@ -133,16 +133,27 @@ t1, s1 = do_zoom_out(); check("scagent→out1 target", t1, "work"); check("scage
 boot("work", [f"{CONF}:all"])
 t2, s2 = do_zoom_out(); check("work→out2 target", t2, "all"); check("work→out2 stack", s2, [])
 
-print("\n== direct entry (no breadcrumb) falls back to static ^parent ==")
-boot("kb", None);      check("kb(direct) ^parent",      short(bf.parent), "pr");   check("kb(direct)→out",      do_zoom_out()[0], "pr")
-boot("te", None);      check("te(direct) ^parent",      short(bf.parent), "dev");  check("te(direct)→out",      do_zoom_out()[0], "dev")
-boot("scagent", None); check("scagent(direct) ^parent", short(bf.parent), "dev");  check("scagent(direct)→out", do_zoom_out()[0], "dev")
+print("\n== direct entry (no breadcrumb) falls back to static ^parent (= work cluster) ==")
+boot("kb", None);      check("kb(direct) ^parent",      short(bf.parent), "work"); check("kb(direct)→out",      do_zoom_out()[0], "work")
+boot("te", None);      check("te(direct) ^parent",      short(bf.parent), "work"); check("te(direct)→out",      do_zoom_out()[0], "work")
+boot("scagent", None); check("scagent(direct) ^parent", short(bf.parent), "work"); check("scagent(direct)→out", do_zoom_out()[0], "work")
 
 print("\n== tr nests under life, bf under work ==")
 check("tr ^life",  SECS["tr"]["parent"],  "life")
 check("bf ^work",  SECS["bf"]["parent"],  "work")
 check("life lists tr", "tr" in SECS["life"]["kids"], True)
 check("work lists bf", "bf" in SECS["work"]["kids"], True)
+
+print("\n== { } = 5 siblings · p jump codes (= tree) ==")
+boot("scagent", [f"{CONF}:all", f"{CONF}:work"])
+ring = ring_of("scagent"); i = ring.index("scagent")
+check("work→scagent→}", do_zoom_side(True, 5)[0], ring[(i + 5) % len(ring)])
+boot("scagent", [f"{CONF}:all", f"{CONF}:work"])
+check("work→scagent→{", do_zoom_side(False, 5)[0], ring[(i - 5) % len(ring)])
+codes = {c: s for c, s, _ in bf.jump_codes()}
+check("codes incl kb · sys · so · scagent", {"kb", "sys", "so", "scagent"} <= set(codes), True)
+check("pr_rust ➡ code rust, section pr_rust", codes.get("rust"), "pr_rust")
+check("no meta/sub sections (all work life te_ag re_notes)", set(codes) & {"all", "work", "life", "te_ag", "re_notes"}, set())
 
 # ─────────────────────────────────────────────────────────────────────────────
 print("\n" + ("ALL PASS ✓" if not _fails else f"FAILED ({len(_fails)}): " + "; ".join(_fails)))

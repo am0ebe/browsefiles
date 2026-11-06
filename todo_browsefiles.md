@@ -15,6 +15,7 @@
 - auto-backlinks
 - fix `make_book_template()` path ➡ `$GO/re/boox/notes` (when resumed)
 - 🤖 i herdr theme alw = night: herdr answers OSC 11 w `rgb:0000/0000/0000` (nt th real bg) ➡ `BF_THEME` env override o skip query when `TERM_PROGRAM=herdr`
+- 🤖 🧪 tmux key tst file 4 `p`(h · q · esc) · `.` · `,` · `<` (cancel path) — @1105 only driven by hand i tmux, no regression tst (🔗 mem ref_tmux_tui_test)
 - 🤖 tst `_osc_query` w a pty: reply split mid-terminator (`…\x1b` | `\\`) + no reply ➡ must return ≤~0.3s (raw-mode freeze @1030, fix only tstd by hand) · + **late** reply (aft timeout) ➡ `getkey()` swallows it, `cmds X` menu stays up (@1103, pty harness i git msg)
 
 ## ✔️

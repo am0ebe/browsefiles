@@ -569,6 +569,10 @@ def init_curses():
 	curses.cbreak()		# dont wait for enter
 	curses.curs_set(0) 	# hide cursor
 	gui.keypad(1) 	# nicer escapes like KEY.LEFT
+	try:
+		curses.set_escdelay(25)  # dflt 1000ms = th ESC lag (curses waits 4 an arrow-key seq)
+	except Exception:
+		pass
 
 	try:
 		curses.use_default_colors()  # enables -1 = transparent background
@@ -1024,6 +1028,40 @@ def quick_add_todo(file_idx):
 	_insert_todo_line(path, entry if entry.lstrip().startswith('-') else f"- {entry}", sect)
 	contents[file_idx] = None  # invalidate cache → reload on next access
 
+SCRAPS = ('scrap.md', 'scrap2.md')   # th 2 phone-scribble inboxes i go/ (= tree's capture targets)
+
+def quick_scrap():
+	"""< = 1 line ➡ scrap.md / scrap2.md (= tree's <). Tab ⇆ target · Enter add · Esc cancel.
+	Same bullet as kbserve's capture: `- line` appended at th end."""
+	global y, x
+	ti, buf = 0, ''
+	while True:
+		gui.clear()
+		y = curses.LINES - 2; x = 0
+		p(f"✏️ ➡ {SCRAPS[ti]}   (Tab ⇆ scrap / scrap2 · Enter add · Esc cancel)", color(COLOR_THEME) | curses.A_BOLD)
+		y = curses.LINES - 1; x = 0
+		p("> " + buf[-(curses.COLS - 4):])
+		try:
+			ch = gui.get_wch()                      # str = typed char (umlauts, moji) · int = special key
+		except curses.error:
+			continue
+		if ch in ('\x1b', 27):
+			break
+		if ch in ('\t', 9):
+			ti = (ti + 1) % len(SCRAPS); continue
+		if ch in ('\n', '\r', curses.KEY_ENTER, 10, 13):
+			txt = buf.strip()
+			if txt:
+				path = Path.home() / "gopro/go" / SCRAPS[ti]
+				old = path.read_text(encoding="utf-8") if path.exists() else ""
+				path.write_text(old + ("" if not old or old.endswith("\n") else "\n") + f"- {txt}\n", encoding="utf-8")
+			break
+		if ch in (curses.KEY_BACKSPACE, '\x7f', '\b', 127, 8):
+			buf = buf[:-1]
+		elif isinstance(ch, str) and ch.isprintable():
+			buf += ch
+	gui.clear()
+
 def is_date_filter(fdef):
 	return "📆" in fdef['patterns'] or "⏰" in fdef['patterns']
 
@@ -1337,6 +1375,73 @@ def print_filelist(file_idx):
 			gui.clear()
 			return file_idx
 
+GO_CONF = os.path.expanduser("~/.config/user/browsefiles/go/browse.conf")
+
+def jump_codes():
+	"""[(code, section, emoji)] — browse.conf sections that r an area o project dir (pr_rust ➡ rust).
+	Same codes as th tree's ; / p jump (mksite: top dirs) ➡ same prefixes, same keys."""
+	go = Path.home() / "gopro/go"
+	try:
+		sys.path.insert(0, str(go / "pr/kb/bin")); import tags; emo = tags.TAG_MAP
+	except Exception:
+		emo = {}
+	out = []
+	with open(GO_CONF) as f:
+		for raw in f:
+			s = raw.strip()
+			if not (s.startswith('[') and s.endswith(']')):
+				continue
+			sec = s[1:-1].strip(); code = sec.removeprefix('pr_')
+			if (go / code).is_dir() or (go / "pr" / code).is_dir():
+				out.append((code, sec, emo.get(code, '')))
+	return out
+
+def jump_picker():
+	"""p ➡ type a code (k ➡ kb · s ➡ so/sys/scagent …) · list filters as u type · unique ➡ jump.
+	↑↓ pick · Enter = selected · ⌫ undo · Esc q cancel · h = home ([all]). = tree's ; / p."""
+	global x, y
+	codes = [('h', 'all', '🏠')] + jump_codes()
+	buf, sel = '', 0
+	while True:
+		cands = [c for c in codes if c[0].startswith(buf)]
+		sel = min(sel, len(cands) - 1)
+		gui.clear()
+		y = 1; x = curses.COLS // 3
+		p(f"jump ➡ {buf}_", color(COLOR_THEME) | curses.A_BOLD)
+		y += 1
+		for i, (code, sec, e) in enumerate(cands[:max(1, curses.LINES - 5)]):
+			x = curses.COLS // 3
+			p(f"{e or '📁'}  {code}", color(COLOR_THEME) | (curses.A_REVERSE | curses.A_BOLD if i == sel else 0))
+		y = curses.LINES - 1; x = 0
+		p("type code · h home · ↑↓ pick · Enter jump · ⌫ undo · Esc q cancel", color(COLOR_THEME))
+		ch = getkey()
+		if ch in (27, ord('q')):                         # no code starts w q
+			break
+		if ch in (curses.KEY_BACKSPACE, 127, 8):
+			buf = buf[:-1]; sel = 0; continue
+		if ch == curses.KEY_DOWN:
+			sel = (sel + 1) % len(cands); continue
+		if ch == curses.KEY_UP:
+			sel = (sel - 1) % len(cands); continue
+		pick = None
+		if ch in (curses.KEY_ENTER, 10, 13):
+			pick = cands[sel]
+		elif 32 < ch < 127:
+			nb = buf + chr(ch).lower()
+			nc = [c for c in codes if c[0].startswith(nb)]
+			if not nc:
+				curses.flash(); continue
+			buf, sel = nb, 0
+			exact = [c for c in nc if c[0] == nb]
+			if len(nc) == 1 or (exact and len(nc) == len(exact)):
+				pick = (exact or nc)[0]
+		if pick:
+			os.environ.pop('BF_STACK', None)             # direct entry ➡ static ^parent, like th X2 alias
+			os.environ.pop('BF_INITIAL_FILE', None)
+			os.system(f"{sys.argv[0]} {GO_CONF}:{pick[1]}")
+			exit()
+	gui.clear()
+
 def print_help():
 	global x, y
 	gui.clear()
@@ -1344,7 +1449,15 @@ def print_help():
 	x=curses.COLS//3
 	p("")
 	x=curses.COLS//3
-	p("?, h         - print this help",color(COLOR_THEME))
+	p("k, ?, h      - print this help",color(COLOR_THEME))
+	x=curses.COLS//3
+	p("p, ;         - jump 2 area/project: type code (k ➡ kb · s ➡ so/sys/… · h ➡ home) · unique ➡ go",color(COLOR_THEME))
+	x=curses.COLS//3
+	p(".            - back 2 th prev file (again = flip)",color(COLOR_THEME))
+	x=curses.COLS//3
+	p(",            - scrap overlay (again ➡ scrap2)",color(COLOR_THEME))
+	x=curses.COLS//3
+	p("<            - quick scrap: 1 line ➡ scrap / scrap2 (Tab flips)",color(COLOR_THEME))
 	x=curses.COLS//3
 	p("←→           - prev/next file",color(COLOR_THEME))
 	x=curses.COLS//3
@@ -1359,6 +1472,8 @@ def print_help():
 	p("-/_ ctrl+↓   - ⇩ zoom in",color(COLOR_THEME))
 	x=curses.COLS//3
 	p("[ ] tab/⇧tab - ⇦/⇨ prev/next sibling (cluster lvl: work⇄life toggle)",color(COLOR_THEME))
+	x=curses.COLS//3
+	p("{ }          - ⇦/⇨ 5 siblings back / fwd",color(COLOR_THEME))
 	x=curses.COLS//3
 	p("f,/          - find (skips ## ✔️ done) · prefix query w / for regex",color(COLOR_THEME))
 	x=curses.COLS//3
@@ -1421,7 +1536,7 @@ def print_help():
 	x=curses.COLS//3
 	p("P            - edit file list / conf",color(COLOR_THEME))
 	x=curses.COLS//3
-	p("p            - edit source",color(COLOR_THEME))
+	p("ctrl+p       - edit source",color(COLOR_THEME))
 	x=curses.COLS//3
 
 	gui.getch()
@@ -1536,7 +1651,7 @@ def _extract_kids_from_lines(raw_lines, conf_abs=None, parent_dir=''):
 	return kids
 
 
-def zoom_side(isRight=False):
+def zoom_side(isRight=False, step=1):
 	if not parent:
 		return
 
@@ -1559,7 +1674,7 @@ def zoom_side(isRight=False):
 		return
 
 	idx     = kids.index(cur)
-	sibling = kids[(idx + (1 if isRight else -1)) % len(kids)]
+	sibling = kids[(idx + (step if isRight else -step)) % len(kids)]
 	# sibling is at the SAME level under the SAME parent → keep the breadcrumb unchanged
 	# (seed [parent] on direct entry so the sibling inherits the same ring context)
 	os.environ['BF_STACK'] = '\x1f'.join(NAV_STACK if NAV_STACK else [parent])
@@ -1588,6 +1703,9 @@ def main(stdscr):
 
 	file_idx = 0
 	page = 0
+	# . = prev file: same section ➡ prev_idx · just entered ➡ th file we came fr (BF_PREV = "conf\x1ffile")
+	_prev_ext = os.environ.pop('BF_PREV', '')
+	prev_idx = None
 
 	# restore selection across zoom-in / zoom-out
 	initial_file = os.environ.pop('BF_INITIAL_FILE', None)
@@ -1610,8 +1728,12 @@ def main(stdscr):
 			file_idx = found
 			maxPage = _maxpage(file_idx)
 
+	cur_idx = file_idx
 	while True:
 		x=y=0
+		if file_idx != cur_idx:
+			prev_idx, cur_idx = cur_idx, file_idx
+		os.environ['BF_PREV'] = f"{sys.argv[1]}\x1f{files_with_path[file_idx]}"   # evy relaunch (zoom/jump) inherits it
 
 		printHeader(page, maxPage, file_idx, len(files))
 		printPage(page, _current_content(file_idx), HEADER_SIZE)
@@ -1633,12 +1755,42 @@ def main(stdscr):
 			edit(target)
 			exit()
 
-		elif ch in [ ord('p') ]:
+		elif ch == 16:   # ctrl+p = edit bf's own source (was 'p' — now 'p' = area jump, = tree)
 			edit( sys.argv[0])
 			exit()
 
-		elif ch in [ ord('?'), ord('h') ]:
+		elif ch in [ ord('p'), ord(';') ]:   # area jump picker (= tree's ; / p)
+			jump_picker()
+
+		elif ch in [ ord('?'), ord('h'), ord('k') ]:   # k = tree parity (🔗 filter moved k ➡ K)
 			print_help()
+
+		elif ch == ord('.'):                         # prev file (= tree's .)
+			if prev_idx is not None:
+				file_idx = prev_idx
+				_notes_mode = False; page = 0; maxPage = _maxpage(file_idx)
+			elif _prev_ext:
+				conf, f = _prev_ext.split('\x1f', 1)
+				os.environ.pop('BF_STACK', None)
+				os.environ['BF_INITIAL_FILE'] = f
+				os.environ['BF_PREV'] = f"{sys.argv[1]}\x1f{files_with_path[file_idx]}"
+				os.system(f"{sys.argv[0]} {conf}")
+				exit()
+			else:
+				printBIG("no prev")
+				gui.clear()
+
+		elif ch == ord(','):                         # scrap overlay · again ➡ scrap2 (= tree's , · shell `,`)
+			s1, s2 = (str(Path.home() / "gopro/go" / s) for s in SCRAPS)
+			tgt = s2 if (_notes_mode and _notes_file == s1) else s1
+			if not _notes_mode:
+				_prev_notes_view = VIEW_MODE
+			_notes_file, _notes_content = tgt, get_content_from_file(tgt)
+			_notes_mode, _overlay_label = True, os.path.basename(tgt)[:-3]
+			page = 0; maxPage = _maxpage(file_idx)
+
+		elif ch == ord('<'):                         # quick scrap (= tree's <)
+			quick_scrap()
 
 		elif ch in [ ord('e'), 10]:
 			edit(_notes_file if _notes_mode else files_with_path[ file_idx ])
@@ -1698,6 +1850,9 @@ def main(stdscr):
 
 		elif ch in [ ord(']'), ord('\t') ]:          # ] or tab → next sibling
 			zoom_side(isRight=True)
+
+		elif ch in [ ord('{'), ord('}') ]:          # { } → 5 siblings back / fwd (= tree; C-[ is ESC i a terminal)
+			zoom_side(isRight=(ch == ord('}')), step=5)
 
 		elif ch == curses.KEY_F9:
 			THEME_IDX = (THEME_IDX + 1) % len(THEMES)
