@@ -60,7 +60,7 @@ filelist_all
 - **Layer 3** area sections: the files. **tr nests under life, bf under work** (travel=life, browsefiles=dev) — reached one level deeper (all→life→tr, all→work→bf), NOT cluster peers.
 
 **Breadcrumb nav (the `^parent` is now only a fallback):** zoom-in pushes the current section onto a `BF_STACK` env breadcrumb, so zoom-out/sideways follow the *path you actually took*, not the static `^parent`. This fixes multi-entry sections (te/kb in work+life; scagent/sys/demo/bf in work+pr/dev): e.g. `2w`→te→out now returns to **work**, and sideways from te cycles **work's** kids — not dev's. The conf `^parent` is used only on **direct entry** (alias jumps like `k2`,`5`) where there's no breadcrumb. Static parents: life areas (incl tr) `^life`, le/bf `^work`, te/kb + pr-projects `^dev`/`^pr`.
-Aliases `2w`/`2l` (+ `2w!`/`2l!` ‼️-filtered) manual in `.common.sh`; `work`/`life` in auto-gen `_bskip` (cluster meta, no cd/`*2` alias) — mirrors `all`/`2d`.
+Aliases `2w`/`2l` manual in `.common.sh` (no `X!` ‼️ aliases since @1107 — filter inside bf); `work`/`life` in auto-gen `_bskip` (cluster meta, no cd/`*2` alias) — mirrors `all`/`2d`.
 
 ## Key browsefiles.py internals
 - `parse_filelist()`: reads filelist, expands globs, builds `files_with_path` + `files_with_kid`
