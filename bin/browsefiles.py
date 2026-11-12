@@ -1405,7 +1405,8 @@ def jump_codes():
 
 def jump_picker():
 	"""p ➡ type a code (k ➡ kb · s ➡ so/sys/scagent …) · list filters as u type · unique ➡ jump.
-	↑↓ pick · Enter = selected · ⌫ undo · Esc q cancel · h = home ([all]). = tree's ; / p."""
+	↑↓←→ Tab ⇧Tab PgUp/Dn Home End pick · Enter = selected · 1-9 = numbered item · ⌫ undo · Esc q cancel ·
+	h = home ([all]). = tree's ; / p."""
 	global x, y
 	codes = [('h', 'all', '🏠')] + jump_codes()
 	buf, sel = '', 0
@@ -1418,21 +1419,31 @@ def jump_picker():
 		y += 1
 		for i, (code, sec, e) in enumerate(cands[:max(1, curses.LINES - 5)]):
 			x = curses.COLS // 3
-			p(f"{e or '📁'}  {code}", color(COLOR_THEME) | (curses.A_REVERSE | curses.A_BOLD if i == sel else 0))
+			num = f"{i + 1}" if i < 9 else " "            # = tree's number circles: digit ➡ go
+			p(f"{num} {e or '📁'}  {code}", color(COLOR_THEME) | (curses.A_REVERSE | curses.A_BOLD if i == sel else 0))
 		y = curses.LINES - 1; x = 0
-		p("type code · h home · ↑↓ pick · Enter jump · ⌫ undo · Esc q cancel", color(COLOR_THEME))
+		p("type code · h home · ↑↓←→ Tab PgUp/Dn pick · Enter jump · 1-9 go · ⌫ undo · Esc q cancel", color(COLOR_THEME))
 		ch = getkey()
 		if ch in (27, ord('q')):                         # no code starts w q
 			break
 		if ch in (curses.KEY_BACKSPACE, 127, 8):
 			buf = buf[:-1]; sel = 0; continue
-		if ch == curses.KEY_DOWN:
-			sel = (sel + 1) % len(cands); continue
-		if ch == curses.KEY_UP:
-			sel = (sel - 1) % len(cands); continue
+		n = len(cands)
+		step = {curses.KEY_DOWN: 1, curses.KEY_RIGHT: 1, 9: 1, curses.KEY_UP: -1, curses.KEY_LEFT: -1, curses.KEY_BTAB: -1}.get(ch)
+		if step:                                         # = tree jump box (1 col ➡ ←→ = ↑↓)
+			sel = (sel + step) % n; continue
+		if ch in (curses.KEY_NPAGE, curses.KEY_PPAGE):
+			sel = max(0, min(n - 1, sel + (8 if ch == curses.KEY_NPAGE else -8))); continue
+		if ch in (curses.KEY_HOME, curses.KEY_END):
+			sel = 0 if ch == curses.KEY_HOME else n - 1; continue
 		pick = None
 		if ch in (curses.KEY_ENTER, 10, 13):
 			pick = cands[sel]
+		elif ord('1') <= ch <= ord('9') and not any(c[0].startswith(buf + chr(ch)) for c in codes):
+			if ch - ord('1') < n:                        # digit = numbered item, unless a code goes on w it (m ➡ 8 = m8)
+				pick = cands[ch - ord('1')]
+			else:
+				curses.flash(); continue
 		elif 32 < ch < 127:
 			nb = buf + chr(ch).lower()
 			nc = [c for c in codes if c[0].startswith(nb)]
@@ -1459,6 +1470,7 @@ def print_help():
 	p("k, ?, h      - print this help",color(COLOR_THEME))
 	x=curses.COLS//3
 	p("p, ;         - jump 2 area/project: type code (k ➡ kb · s ➡ so/sys/… · h ➡ home) · unique ➡ go",color(COLOR_THEME))
+	p("  (jump)     - ↑↓←→ Tab PgUp/Dn pick · Enter go · 1-9 = numbered item",color(COLOR_THEME))
 	x=curses.COLS//3
 	p(".            - back 2 th prev file (again = flip)",color(COLOR_THEME))
 	x=curses.COLS//3
