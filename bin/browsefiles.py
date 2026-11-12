@@ -419,6 +419,13 @@ def parse_filelist(filelist_):
 	files_with_path = todo_fp + other_fp
 	files_with_kid  = todo_fk + other_fk
 
+	# week.md (weekplan) listed i a section ➡ pin it 1st = th list opens on th week's plan (kb ‼️ @1112)
+	wk = os.path.realpath(WEEK_FILE)
+	if wk in files_with_path:
+		i = files_with_path.index(wk)
+		files_with_path.insert(0, files_with_path.pop(i))
+		files_with_kid.insert(0, files_with_kid.pop(i))
+
 	files    = [f.split('/')[-1] + ('/' if os.path.isdir(f) else '') for f in files_with_path]
 	contents = [None] * len(files_with_path)  # lazy: loaded on first access via get_content()
 
