@@ -1,11 +1,11 @@
+## 🏔️
+
 ## ⏳
-
-## ‼️
-
 
 ## 📆
 
 ## 🔵
+- 🩹 **todo board v2** (kb #141 @1117 · kb arch D-017 · SSOT `pr/kb/bin/tags.py` § todo board) — `## ‼️` gone ➡ `‼️` = modifier on 🔵 lines (top o 🔵) · `## 🏔️` milestones alw 1st · `## ▶ NEXT` gone · quick-add `A` asks ⏳/‼️/📆/🔵 ➡ ⏳/📆/🔵 (+ `‼️` = 🔵 + modifier at top) · `!`/`2` section key ➡ filter on th ‼️ modifier (alr: `2` = ‼️🔥) · help line `‼️ =!/2` · new modifiers 👀 🧠 🏠 (filter keys?) · po moji ➡ ✊ (tags.py, derives)
 - 🟢 opened md: Ctrl/Alt+↑/↓ = jump 2 prev/nxt section (am0 @1108)
 - xpand 2 no-txt-files (pdfs, excel). how? 🛑
 	- 🔍filenames o 🔍 inside pdf w 🔧 + 🔍 inside excel / other filetypes?
