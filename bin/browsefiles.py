@@ -162,6 +162,18 @@ def _detect_theme_idx(bg_hex):
 		pass
 	return 0  # default night
 
+def startup_theme(env=None, query=None):
+	"""➡ (bg hex, theme idx) b4 curses · BF_THEME=night|twilight|day wins · herdr answers OSC 11 w
+	rgb:0000/0000/0000 (not th real bg) ➡ no query there (= also no late reply 2 swallow) ➡ night."""
+	env = os.environ if env is None else env
+	t = env.get('BF_THEME', '').strip().lower()
+	if t in THEMES:
+		return '', THEMES.index(t)
+	if env.get('TERM_PROGRAM') == 'herdr' or env.get('HERDR_ENV'):
+		return '', 0
+	bg = _parse_rgb((query or _osc_query)('11'))
+	return bg, _detect_theme_idx(bg)
+
 
 _zoom_source    = ''     # file path that brought us into this filelist (for zoom-out)
 VIEW_MODE       = 'todo' # default: hide done(✔️)+backlog(🔵) for quick scan · 'all'|'todo'|'done'
@@ -2044,8 +2056,7 @@ if __name__ == "__main__":
 	FILTERS = parse_filter_config(FILTER_CONFIG)
 	NAV     = parse_nav_config(NAV_CONFIG)
 
-	# detect current terminal theme via OSC query (read-only, never writes back)
-	INITIAL_TERM_BG = _parse_rgb(_osc_query('11'))
-	THEME_IDX       = _detect_theme_idx(INITIAL_TERM_BG)
+	# detect current terminal theme via OSC query (read-only, never writes back) · BF_THEME / herdr skip it
+	INITIAL_TERM_BG, THEME_IDX = startup_theme()
 
 	curses.wrapper(main)
