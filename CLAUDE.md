@@ -4,6 +4,8 @@
 Curses TUI file browser. Reads a filelist config, displays matched files, opens them in `$EDITOR` (subl). Core KB navigation tool for go/.
 
 ## Key paths
+- theme: OSC 11 bg query at startup · `BF_THEME=night|twilight|day` overrides · herdr ➡ no query (answers black), night
+- tsts: `PYTHONPATH=bin python3 test_nav.py` (conf + zoom) · `python3 test_term.py` (theme · pty OSC · late-reply swallow)
 - Script: `~/bin/browsefiles.py` (symlink into bin)
 - Filelists: `~/.config/user/browsefiles/go/` (= `~/dotfiles/.config/user/browsefiles/go/`)
 - Entry alias: `2d` → `browsefiles.py ~/.config/user/browsefiles/go/filelist_all`
