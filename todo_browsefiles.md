@@ -14,12 +14,11 @@
 - U/I annotations — urg 1-5, imp 1-5, ti est
 - mobile-sync filter — excl ⇧ dirs f filelist view
 - auto-backlinks
-- fix `make_book_template()` path ➡ `$GO/re/boox/notes` (when resumed)
-- 🤖 i herdr theme alw = night: herdr answers OSC 11 w `rgb:0000/0000/0000` (nt th real bg) ➡ `BF_THEME` env override o skip query when `TERM_PROGRAM=herdr`
 - 🤖 🧪 tmux key tst file 4 `p`(h · q · esc) · `.` · `,` · `<` (cancel path) — @1105 only driven by hand i tmux, no regression tst (🔗 mem ref_tmux_tui_test)
-- 🤖 tst `_osc_query` w a pty: reply split mid-terminator (`…\x1b` | `\\`) + no reply ➡ must return ≤~0.3s (raw-mode freeze @1030, fix only tstd by hand) · + **late** reply (aft timeout) ➡ `getkey()` swallows it, `cmds X` menu stays up (@1103, pty harness i git msg)
+- 🤖🩹 `test_nav.py` red: `pr_rust ➡ code rust` (rust archived @1116, browse.conf section left) · run `PYTHONPATH=bin python3 test_nav.py`
 
 ## ✔️
+- @1117 (M8 C6): `BF_THEME` override + herdr ➡ no OSC query (night) · `test_term.py` 15 (pty `_osc_query` split/none/late · getkey late-reply swallow) · `make_book_template` ➡ `cd re/boox` (dotfiles 1fe0b56)
 - top symb bar should be narrower so theres no line break. or best just fill hspace dynamically.
 - when click symb top bar, should show todo_XY first.
 - the theme (n/d) isnt set correctly. on diff symb-bar click it toggles sometimes sometimes not. not kept when nav around...
