@@ -11,8 +11,7 @@
 	- 🔍filenames o 🔍 inside pdf w 🔧 + 🔍 inside excel / other filetypes?
 	- non-txt files: mk list + menu; select+enter ➡ open w `o()`; multi-select (1/all/some) ➡ open md w subl
 - U/I annotations — urg 1-5, imp 1-5, ti est
-- mobile-sync filter — excl ⇧ dirs f filelist view
-- auto-backlinks
+- auto-backlinks — on a file, list evy go/ file th links TO it (reverse o its 🔗s) · 🦠 @1117 "whats this?" ➡ A i [🔗 kb answers](../kb/bl_triage_1117_answers.md) · ⬄ mksite / kbrag (alr parse all links)
 - 🤖 🧪 tmux key tst file 4 `p`(h · q · esc) · `.` · `,` · `<` (cancel path) — @1105 only driven by hand i tmux, no regression tst (🔗 mem ref_tmux_tui_test)
 - 🤖🩹 `test_nav.py` red: `pr_rust ➡ code rust` (rust archived @1116, browse.conf section left) · run `PYTHONPATH=bin python3 test_nav.py`
 
