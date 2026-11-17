@@ -58,7 +58,7 @@ filelist_all
 ## 3-layer hierarchy (browse.conf)
 `[all]` (2d) → `[work]`/`[life]` (2w/2l) → each area/project section.
 - **Layer 1** `[all]`: every area/project todo, each entry's kid = its *cluster* (`> work`/`> life`) — right-arrow groups them. The cluster ring is exactly {work, life}, so `[`/`]`/**tab** is a clean **work⇄life** toggle (sideways nav: `]`/tab=next, `[`/⇧tab=prev).
-- **Layer 2** `[work]`/`[life]` (`^all`): cluster's todos, each `> section` → its area. work = scagent/te/le/bigbro/audio/demo/sys/kb/**bf** · life = aa/bx/mv/po/re/so/te/kb/**tr**. te+kb appear in both.
+- **Layer 2** `[work]`/`[life]` (`^all`): cluster's todos, each `> section` → its area. work = scagent/te/le/bb/audio/demo/sys/kb/**bf** · life = aa/bx/mv/po/re/so/te/kb/**tr**. te+kb appear in both.
 - **Layer 3** area sections: the files. **tr nests under life, bf under work** (travel=life, browsefiles=dev) — reached one level deeper (all→life→tr, all→work→bf), NOT cluster peers.
 
 **Breadcrumb nav (the `^parent` is now only a fallback):** zoom-in pushes the current section onto a `BF_STACK` env breadcrumb, so zoom-out/sideways follow the *path you actually took*, not the static `^parent`. This fixes multi-entry sections (te/kb in work+life; scagent/sys/demo/bf in work+pr/dev): e.g. `2w`→te→out now returns to **work**, and sideways from te cycles **work's** kids — not dev's. The conf `^parent` is used only on **direct entry** (alias jumps like `k2`,`5`) where there's no breadcrumb. Static parents: life areas (incl tr) `^life`, le/bf `^work`, te/kb + pr-projects `^dev`/`^pr`.
