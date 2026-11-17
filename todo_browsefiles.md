@@ -1,5 +1,4 @@
 ## ⏳
-- 🦠 OSC 11 theme-query fallout — watch: @1101 freeze (select-guarded reads) · @1103 `cmds X` results closed by a **late** reply ➡ `getkey()` swallows it + Menu ignores resize (strix: "worx") · ▶ NEXT: use bf i herdr normally, freeze / menu-close back? ➡ reopen
 
 ## ‼️
 
@@ -18,6 +17,7 @@
 - 🤖🩹 `test_nav.py` red: `pr_rust ➡ code rust` (rust archived @1116, browse.conf section left) · run `PYTHONPATH=bin python3 test_nav.py`
 
 ## ✔️
+- @1117 OSC 11 watch closed (🦠: no freeze / menu-close seen since @1103) · now tstd (`test_term.py`) + herdr skips th query
 - @1117 (M8 C6): `BF_THEME` override + herdr ➡ no OSC query (night) · `test_term.py` 15 (pty `_osc_query` split/none/late · getkey late-reply swallow) · `make_book_template` ➡ `cd re/boox` (dotfiles 1fe0b56)
 - top symb bar should be narrower so theres no line break. or best just fill hspace dynamically.
 - when click symb top bar, should show todo_XY first.
