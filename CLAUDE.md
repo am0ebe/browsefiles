@@ -5,7 +5,9 @@ Curses TUI file browser. Reads a filelist config, displays matched files, opens 
 
 ## Key paths
 - theme: OSC 11 bg query at startup · `BF_THEME=night|twilight|day` overrides · herdr ➡ no query (answers black), night
-- tsts: `PYTHONPATH=bin python3 test_nav.py` (conf + zoom) · `python3 test_term.py` (theme · pty OSC · late-reply swallow)
+- tsts: `PYTHONPATH=bin python3 test_nav.py` (conf + zoom) · `python3 test_term.py` (theme · pty OSC · late-reply swallow) · `PYTHONPATH=bin python3 test_keys.py` (py_compile guard · help palette · e/ctrl+e · quick-add)
+- ⚠️ live file: `b2`/`2d` run THIS file ➡ multi-step edits = `python3 -m py_compile bin/browsefiles.py` aftr evy step (🦠 hit a half-edit @1118)
+- keys (kb D-029): `e` = subl · `ctrl+e` = 🌲 KB (kblink ➡ xdg-open) · `h`/`k`/`?` = help palette (type = filter · ↵ runs)
 - Script: `~/bin/browsefiles.py` (symlink into bin)
 - Filelists: `~/.config/user/browsefiles/go/` (= `~/dotfiles/.config/user/browsefiles/go/`)
 - Entry alias: `2d` → `browsefiles.py ~/.config/user/browsefiles/go/filelist_all`

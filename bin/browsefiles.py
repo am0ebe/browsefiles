@@ -25,6 +25,7 @@ except ImportError:  # lap (Arch): no pip in system py ➡ wl-copy (Wayland) / x
 			wl = os.getenv("WAYLAND_DISPLAY") and shutil.which("wl-copy")
 			subprocess.run(["wl-copy"] if wl else ["xclip", "-selection", "clipboard"], input=s, text=True)
 import sys
+import subprocess
 import curses
 import re
 import random
@@ -466,7 +467,7 @@ def _classify_section(header_line):
 	low = header_line.lower()
 	if 'done' in low or '✔️' in header_line or '✅' in header_line:
 		return 'done'
-	if 'backlog' in low or '🔵' in header_line:
+	if 'backlog' in low or '🔵' in header_line or '💭' in header_line:   # 💭 someday = off th todo view (kb D-019)
 		return 'backlog'
 	return 'todo'
 
@@ -626,6 +627,25 @@ def edit(*args):
 			sub_args += f" {a}"
 
 	os.system(f"{editor} {sub_args}")
+
+KBLINK = os.path.expanduser("~/gopro/go/pr/kb/bin/kblink")
+
+def kb_url(path, line=0):
+	"""md under go/ ➡ its 🌲 KB url (kblink · --line N = lands at th heading above line N) · else ''."""
+	try:
+		cmd = [KBLINK] + (["--line", str(line)] if line else []) + [path]
+		out = subprocess.run(cmd, capture_output=True, text=True, timeout=10).stdout.strip()
+	except (OSError, subprocess.SubprocessError):
+		return ''
+	return out if out.startswith("http") else ''
+
+def open_in_kb(path, line=0):
+	"""ctrl+e = open i 🌲 KB (1 scheme evywhere, kb D-029: e = subl · ctrl+e = KB) · xdg-open = dflt browser."""
+	url = kb_url(path, line)
+	if not url:
+		printBIG("no KB page"); gui.clear(); return False
+	subprocess.Popen(["xdg-open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+	return True
 
 def printHeader(page, maxPage, file_idx, nfiles):
 	W = curses.COLS - 1
@@ -995,16 +1015,20 @@ def find_links_in_file(file_idx):
 
 _TODO_SECTIONS = {  # moji-prompt key → status-section header symbol (scaffold order)
 	'w': '⏳', 'd': '⏳', '1': '⏳',   # doing / wip
-	'!': '‼️', '2': '‼️',             # committed
+	'!': '🔵', '2': '🔵',             # ‼️ more imp ➡ top o 🔵 w a `‼️` modifier (`## ‼️` retired, kb D-017/018)
 	'c': '📆', '3': '📆',             # calendar
 	'b': '🔵', '4': '🔵',             # backlog (default)
+	'i': '💭', '5': '💭',             # someday/maybe idea ➡ `## 💭` at th bottom (kb D-019)
 }
+_TODO_PREFIX = {'!': '‼️ ', '2': '‼️ '}
 
 def _insert_todo_line(path, line, sect='🔵'):
-	# insert under '## <sect>' header; else first header; else append at EOF
+	# insert under '## <sect>' header; else first header; else append at EOF · no `## 💭` yet ➡ new one at th bottom
 	with open(path) as f:
 		lines = f.read().splitlines()
 	idx = next((i+1 for i, l in enumerate(lines) if l.strip().startswith('#') and sect in l), None)
+	if idx is None and sect == '💭':
+		lines += ['', '## 💭']; idx = len(lines)
 	if idx is None:
 		idx = next((i+1 for i, l in enumerate(lines) if l.strip().startswith('#')), None)
 	if idx is None:
@@ -1039,12 +1063,14 @@ def quick_add_todo(file_idx):
 	y = curses.LINES - 2; x = 0
 	p(f'file "{entry[:curses.COLS-10]}" →')
 	y = curses.LINES - 1; x = 0
-	p("⏳=w/1   ‼️ =!/2   📆=c/3   🔵=b/4   (dflt 🔵)")
+	p("⏳=w/1   ‼️ =!/2 (top o 🔵)   📆=c/3   🔵=b/4   💭=i/5 idea   (dflt 🔵)")
 	curses.flushinp()  # drop the Enter that ended getstr → don't auto-pick
 	k = gui.getch()
 	sect = _TODO_SECTIONS.get(chr(k), '🔵') if 0 <= k < 256 else '🔵'
+	pre = _TODO_PREFIX.get(chr(k), '') if 0 <= k < 256 else ''
 	gui.clear()
-	_insert_todo_line(path, entry if entry.lstrip().startswith('-') else f"- {entry}", sect)
+	body = entry.lstrip()[1:].lstrip() if entry.lstrip().startswith('-') else entry
+	_insert_todo_line(path, f"- {pre}{body}", sect)
 	contents[file_idx] = None  # invalidate cache → reload on next access
 
 SCRAPS = ('scrap.md', 'scrap2.md')   # th 2 phone-scribble inboxes i go/ (= tree's capture targets)
@@ -1273,6 +1299,11 @@ class Menu:
 				col = self.res[self.current_row][3][0][0]+1
 				edit( file, row, col)
 
+			elif ch == 5:   # ctrl+e = this hit i th 🌲 KB, at its heading (kb D-029)
+				cur = self.res[self.current_row]
+				if isinstance(cur, list):
+					open_in_kb(files_with_path[cur[0]], cur[1])
+
 			elif ch == ord('E'):
 				done = []
 				args = ()
@@ -1472,106 +1503,124 @@ def jump_picker():
 			exit()
 	gui.clear()
 
-def print_help():
-	global x, y
-	gui.clear()
-	y,x=printBIG2(" __ HELP  __ ")
-	x=curses.COLS//3
-	p("")
-	x=curses.COLS//3
-	p("k, ?, h      - print this help",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("p, ;         - jump 2 area/project: type code (k ➡ kb · s ➡ so/sys/… · h ➡ home) · unique ➡ go",color(COLOR_THEME))
-	p("  (jump)     - ↑↓←→ Tab PgUp/Dn pick · Enter go · 1-9 = numbered item",color(COLOR_THEME))
-	x=curses.COLS//3
-	p(".            - back 2 th prev file (again = flip)",color(COLOR_THEME))
-	x=curses.COLS//3
-	p(",            - scrap overlay (again ➡ scrap2)",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("<            - quick scrap: 1 line ➡ scrap / scrap2 (Tab flips)",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("←→           - prev/next file",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("↑↓           - scroll page up/down",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("PgUp/PgDn    - scroll page",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("F9           - theme: night → twilight → day → night",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("+/= ctrl+↑   - ⇧ zoom out",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("-/_ ctrl+↓   - ⇩ zoom in",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("[ ] tab/⇧tab - ⇦/⇨ prev/next sibling (cluster lvl: work⇄life toggle)",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("{ }          - ⇦/⇨ 5 siblings back / fwd",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("f,/          - find (skips ## ✔️ done) · prefix query w / for regex",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("F            - find all (incl ## ✔️ done section)",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("  regex egs: /a|b (either) · /^## (line-start) · /\\d{4} (4 digits) · /a.*b (a…b) · /\\bTODO (word)",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("t/d          - toggle Todo/Done view (press again to go back)",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("a            - show All (reset view)",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("A            - quick-add todo line (asks section moji: ⏳/‼️/📆/🔵)",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("v            - cycle views all→todo→done→notes📕→res📌→all",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("  done view also shows git-history removed done items",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("--- quick-nav overlays (nav.conf) ---",color(COLOR_THEME))
-	for key_char in sorted(NAV.keys()):
-		x=curses.COLS//3
-		ent = NAV[key_char]
-		p(f"{key_char:<13}- {ent['label']} ({ent['spec']})  [toggle]",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("L            - list links in current file  (o=follow in results)",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("--- filters (filters.conf) ---",color(COLOR_THEME))
-	x=curses.COLS//3
+K = curses  # short alias 4 th key table below
+# help = palette (kb D-029): (keys label, wh, key it fires o None) · "— x" rows = section heads
+HELP_ROWS = [
+	("— open", "1 scheme evywhere: e = subl · ctrl+e = 🌲 KB", None),
+	("e  ↵", "open i subl (= KB e)", ord('e')),
+	("ctrl+e", "open i 🌲 KB (kblink url ➡ browser · i find results: at th hit)", 5),
+	("W", "subl + exit bf", ord('W')),
+	("E", "subl: all files o this list", ord('E')),
+	("P", "edit file list / conf", ord('P')),
+	("ctrl+p", "edit bf's own source", 16),
+	("— nav", "", None),
+	("←  →", "prev / next file", K.KEY_RIGHT),
+	("↑  ↓", "scroll page", K.KEY_DOWN),
+	("PgUp PgDn spc", "scroll page", K.KEY_NPAGE),
+	("+ =  ctrl+↑", "zoom out", ord('+')),
+	("- _  ctrl+↓", "zoom in", ord('-')),
+	("[ ]  Tab ⇧Tab", "prev / next sibling (cluster lvl: work ⬄ life)", ord(']')),
+	("{ }", "5 siblings back / fwd", ord('}')),
+	("p  ;", "jump 2 area / pr: type code (k ➡ kb · h ➡ home) · unique ➡ go", ord('p')),
+	(".", "back 2 th prev file (again = flip)", ord('.')),
+	("l  j", "file picker (↑↓ · #/↵ jump · q close)", ord('l')),
+	("F1..F10", "jump 2 file 1..10", None),
+	("— find", "", None),
+	("f  /", "find (skips ## ✔️) · /regex: /a|b · /^## · /\\d{4} · /\\bTODO", ord('f')),
+	("F", "find all (incl ## ✔️)", ord('F')),
+	("L", "links i this file", ord('L')),
+	("(results)", "e ↵ subl · ctrl+e KB · c copy line · x copy + exit · o follow link", None),
+	("— views", "", None),
+	("t  d", "todo / done view (again = back) · done = + git-history", ord('t')),
+	("a", "all (reset view)", ord('a')),
+	("v", "cycle all ➡ todo ➡ done ➡ notes ➡ res", ord('v')),
+	("A", "quick-add todo line (asks section moji)", ord('A')),
+	(",", "scrap overlay (again ➡ scrap2)", ord(',')),
+	("<", "quick scrap: 1 line ➡ scrap / scrap2 (Tab flips)", ord('<')),
+	("F9", "theme: night ➡ twilight ➡ day", K.KEY_F9),
+	("h  k  ?", "this help (type 2 filter · ↵ = run th key · esc close)", None),
+	("q  esc", "quit bf", None),
+]
 
+def help_rows():
+	"""static rows + nav.conf overlays + filters.conf filters (aliases folded) = 1 list."""
+	rows = list(HELP_ROWS)
+	main_keys = {r[2] for r in HELP_ROWS if r[2] is not None}
+	rows.append(("— overlays", "nav.conf · again = toggle off", None))
+	for k_ in sorted(NAV.keys()):
+		rows.append((k_, f"{NAV[k_]['label']} ({NAV[k_]['spec']})", ord(k_)))
+	rows.append(("— filters", "filters.conf", None))
 	shown = set()
-	for key_char in sorted(FILTERS.keys(), key=lambda k: (not k.isdigit(), k)):
-		fdef = FILTERS[key_char]
-		fid  = id(fdef)
-		if fid in shown:
+	for k_ in sorted(FILTERS.keys(), key=lambda c: (not c.isdigit(), c)):
+		fdef = FILTERS[k_]
+		if id(fdef) in shown:
 			continue
-		shown.add(fid)
-		aliases = sorted([k for k,v in FILTERS.items() if v is fdef],
-		                  key=lambda k: (not k.isdigit(), k))
-		key_str = ", ".join(aliases)
-		x=curses.COLS//3
-		p(f"{key_str:<10} - {fdef['label']}  ({fdef['desc']})",color(COLOR_THEME))
+		shown.add(id(fdef))
+		al = sorted([c for c, v in FILTERS.items() if v is fdef], key=lambda c: (not c.isdigit(), c))
+		live = [c for c in al if ord(c) not in main_keys]   # main-loop key wins ➡ filter alias = dead
+		dead = f"  ⚠️ {' '.join(sorted(set(al) - set(live)))} shadowed by main key" if len(live) < len(al) else ""
+		rows.append(("  ".join(al), f"{fdef['label']}  ({fdef['desc']}){dead}", ord(live[0]) if live else None))
+	return rows
 
-	x=curses.COLS//3
-	p("--- ---",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("f1..10       - jump to file",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("l, j         - file picker / list (↑↓/jk · type #/Enter jump · q close)",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("c            - copy selected line",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("x, v         - copy selected line and exit",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("e            - edit current file",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("w            - week.md quick-view (toggle)",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("W            - edit current file and exit",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("E            - edit all files",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("P            - edit file list / conf",color(COLOR_THEME))
-	x=curses.COLS//3
-	p("ctrl+p       - edit source",color(COLOR_THEME))
-	x=curses.COLS//3
+def help_filter(rows, q):
+	"""q = typed txt ➡ runnable rows whose keys o wh contain it (case-insens) · heads drop out while filtering."""
+	if not q:
+		return rows
+	q = q.lower()
+	return [r for r in rows if r[2] is not None and (q in r[0].lower() or q in r[1].lower())]
 
-	gui.getch()
-	gui.clear()
+def help_step(act, sel, ch, avail):
+	"""1 nav key ➡ new sel (index into rows, always a runnable row) o None if ch isn't nav."""
+	j = act.index(sel) if sel in act else 0
+	nav = {curses.KEY_DOWN: (j + 1) % len(act), curses.KEY_UP: (j - 1) % len(act),
+	       curses.KEY_NPAGE: min(len(act) - 1, j + avail), curses.KEY_PPAGE: max(0, j - avail),
+	       curses.KEY_HOME: 0, curses.KEY_END: len(act) - 1}
+	return act[nav[ch]] if ch in nav else None
+
+def print_help():
+	"""palette (kb D-029 · 🦠: help is long): scroll ↑↓ PgUp/PgDn Home/End · type = filter · ⌫ ·
+	↵ = run th selected key (returned ➡ main loop fires it) · esc = close (None)."""
+	global x, y
+	rows_all, q, sel = help_rows(), '', 0
+	while True:
+		rows = help_filter(rows_all, q)
+		act = [i for i, r in enumerate(rows) if r[2] is not None]
+		if act and sel not in act:
+			sel = min(act, key=lambda i: (abs(i - sel), i))
+		gui.clear()
+		y = 0; x = 0
+		p(f" HELP · {len(act)} keys · filter ➡ {q}_", color(COLOR_THEME) | curses.A_BOLD)
+		top = 1
+		avail = max(1, curses.LINES - top - 1)
+		start = max(0, min(sel - avail // 2, max(0, len(rows) - avail)))
+		x0 = max(0, min(curses.COLS // 6, curses.COLS - 80))
+		for i in range(start, min(len(rows), start + avail)):
+			k_, wh, fire = rows[i]
+			y = top + i - start; x = x0
+			if fire is None and k_.startswith("—"):
+				p(f"{k_} {wh}", color(COLOR_THEME) | curses.A_BOLD)
+			elif fire is None:
+				p(f"{k_:<16}{wh}", color(COLOR_THEME) | curses.A_DIM)
+			else:
+				p(f"{k_:<16}{wh}", color(COLOR_THEME) | (curses.A_REVERSE | curses.A_BOLD if i == sel else 0))
+		y = curses.LINES - 1; x = 0
+		pos = (act.index(sel) + 1) if sel in act else 0
+		p(f"[{pos}/{len(act)}]  ↑↓ PgUp/Dn · type = filter · ↵ run · esc close", color(COLOR_THEME))
+		ch = getkey()
+		if ch == 27:
+			gui.clear(); return None
+		if ch in (curses.KEY_ENTER, 10, 13):
+			gui.clear()
+			return rows[sel][2] if act else None
+		if ch in (curses.KEY_BACKSPACE, 127, 8):
+			q = q[:-1]; continue
+		if ch == curses.KEY_RESIZE:
+			continue
+		nxt = help_step(act, sel, ch, avail) if act else None
+		if nxt is not None:
+			sel = nxt
+		elif 32 <= ch < 127:
+			q += chr(ch); sel = 0
 
 def _safe_addstr(y, x, s, attr):
 	# clip to screen: skip off-screen rows, trim line to fit width (last cell would ERR)
@@ -1760,6 +1809,7 @@ def main(stdscr):
 			maxPage = _maxpage(file_idx)
 
 	cur_idx = file_idx
+	_pending = []                                     # keys queued by th help palette
 	while True:
 		x=y=0
 		if file_idx != cur_idx:
@@ -1771,6 +1821,8 @@ def main(stdscr):
 
 		if GLOBAL_SEARCH:
 			ch = ord('f') #find
+		elif _pending:
+			ch = _pending.pop(0)                     # help palette ↵ ➡ fire th picked key
 		else:
 			ch = getkey()
 
@@ -1794,7 +1846,12 @@ def main(stdscr):
 			jump_picker()
 
 		elif ch in [ ord('?'), ord('h'), ord('k') ]:   # k = tree parity (🔗 filter moved k ➡ K)
-			print_help()
+			fire = print_help()
+			if fire is not None:
+				_pending.append(fire)
+
+		elif ch == 5:   # ctrl+e = this file i th 🌲 KB (kb D-029: e = subl · ctrl+e = KB, evywhere)
+			open_in_kb(_notes_file if _notes_mode else files_with_path[file_idx])
 
 		elif ch == ord('.'):                         # prev file (= tree's .)
 			if prev_idx is not None:

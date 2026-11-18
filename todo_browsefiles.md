@@ -5,7 +5,8 @@
 ## 📆
 
 ## 🔵
-- 🩹 **todo board v2** (kb #141 @1117 · kb arch D-017 · SSOT `pr/kb/bin/tags.py` § todo board) — `## ‼️` gone ➡ `‼️` = modifier on 🔵 lines (top o 🔵) · `## 🏔️` milestones alw 1st · `## ▶ NEXT` gone · quick-add `A` asks ⏳/‼️/📆/🔵 ➡ ⏳/📆/🔵 (+ `‼️` = 🔵 + modifier at top) · `!`/`2` section key ➡ filter on th ‼️ modifier (alr: `2` = ‼️🔥) · help line `‼️ =!/2` · new modifiers 👀 🧠 🏠 (filter keys?) · po moji ➡ ✊ (tags.py, derives)
+- 🦠 **filter `P` (🎩 pm role) nvr fires** — main `P` = edit conf wins (found kb #150 @1118, help palette marks it ⚠️ shadowed) ➡ pick: new key 4 th filter o drop th row (scagent roles = parked)
+- 🩹 **todo board v2** (kb #141 @1117 · kb arch D-017 · SSOT `pr/kb/bin/tags.py` § todo board) — ✔️ @1118 kb #150: quick-add `!`/`2` ➡ top o 🔵 + `‼️` · `i`/`5` ➡ `## 💭` · `## 💭` off th todo view · left: `## ▶ NEXT` gone · new modifiers 👀 🧠 🧪 (filter keys?) · po moji ➡ ✊ (tags.py, derives)
 - 🟢 opened md: Ctrl/Alt+↑/↓ = jump 2 prev/nxt section (am0 @1108)
 - xpand 2 no-txt-files (pdfs, excel). how? 🛑
 	- 🔍filenames o 🔍 inside pdf w 🔧 + 🔍 inside excel / other filetypes?
