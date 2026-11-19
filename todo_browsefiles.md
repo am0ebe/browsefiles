@@ -5,6 +5,7 @@
 ## 📆
 
 ## 🔵
+- 🤖 **`l` file list: number keys** (scrap @1119) — `1` selects but needs enter, `2`-`9` open direct ➡ `1` opens direct too · shift+1-9/0 = 11-20 · shift/ctrl+up/down = skip 5
 - 🦠 **filter `P` (🎩 pm role) nvr fires** — main `P` = edit conf wins (found kb #150 @1118, help palette marks it ⚠️ shadowed) ➡ pick: new key 4 th filter o drop th row (scagent roles = parked)
 - 🩹 **todo board v2** (kb #141 @1117 · kb arch D-017 · SSOT `pr/kb/bin/tags.py` § todo board) — ✔️ @1118 kb #150: quick-add `!`/`2` ➡ top o 🔵 + `‼️` · `i`/`5` ➡ `## 💭` · `## 💭` off th todo view · left: `## ▶ NEXT` gone · new modifiers 👀 🧠 🧪 (filter keys?) · po moji ➡ ✊ (tags.py, derives)
 - 🟢 opened md: Ctrl/Alt+↑/↓ = jump 2 prev/nxt section (am0 @1108)
