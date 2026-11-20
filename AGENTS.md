@@ -1,0 +1,77 @@
+# browsefiles — Claude context
+
+## What it is
+Curses TUI file browser. Reads a filelist config, displays matched files, opens them in `$EDITOR` (subl). Core KB navigation tool for go/.
+
+## Key paths
+- theme: OSC 11 bg query at startup · `BF_THEME=night|twilight|day` overrides · herdr ➡ no query (answers black), night
+- tsts: `PYTHONPATH=bin python3 test_nav.py` (conf + zoom) · `python3 test_term.py` (theme · pty OSC · late-reply swallow) · `PYTHONPATH=bin python3 test_keys.py` (py_compile guard · help palette · e/ctrl+e · quick-add)
+- ⚠️ live file: `b2`/`2d` run THIS file ➡ multi-step edits = `python3 -m py_compile bin/browsefiles.py` aftr evy step (🦠 hit a half-edit @1118)
+- keys (kb D-029): `e` = subl · `ctrl+e` = 🌲 KB (kblink ➡ xdg-open) · `h`/`k`/`?` = help palette (type = filter · ↵ runs)
+- Script: `~/bin/browsefiles.py` (symlink into bin)
+- Filelists: `~/.config/user/browsefiles/go/` (= `~/dotfiles/.config/user/browsefiles/go/`)
+- Entry alias: `2d` → `browsefiles.py ~/.config/user/browsefiles/go/filelist_all`
+- Area aliases: `te2`, `pr2`, `aa2`, etc. → their own filelist
+
+## Filelist format
+
+```
+^parent_filelist          # back-navigation (left key goes here)
+
+~/path/to/glob            # file or glob — no kid, just opens
+~/path/to/glob filelist_X # file/glob with zoom-in kid (right key → filelist_X)
+```
+
+- Lines starting with `#` or blank → ignored
+- `^parent` → sets parent for left/back navigation (one per filelist)
+- Second column = kid filelist path (relative to filelist dir or absolute)
+- Glob support: `*` (one level), `**` (recursive, uses Python `glob(..., recursive=True)`)
+- Files filtered by `isEditable()` — only ASCII/UTF-8, not HTML/XML
+- todos (`todo` in filename) always sorted to top of list
+
+## Zoom hierarchy (go/ pr/ example)
+
+```
+filelist_all
+  ~/gopro/go/pr/*/todo_*.md  → filelist_pr      # single * = project subdirs only
+    ~/gopro/go/pr/kb/todo_kb.md → filelist_pr_kb
+    ~/gopro/go/pr/sys/todo_sys.md → filelist_pr_sys
+    ~/gopro/go/pr/scagent/todo_scagent.md → filelist_pr_scagent
+      ~/gopro/go/pr/scagent/**                   # all files in project
+```
+
+- Use `*` (not `**`) in filelist_all to match only one level deep (skip top-level area todos)
+- Each project zoom-in filelist uses `**` to show all files recursively
+
+## Adding a new pr/ project
+
+1. Add line to `filelist_pr`: `~/gopro/go/pr/XY/todo_XY.md filelist_pr_XY`
+2. Create `filelist_pr_XY`:
+   ```
+   ^filelist_pr
+
+   ~/gopro/go/pr/XY/**
+   ```
+
+## te/ sub-area pattern (reference)
+`filelist_te` uses same pattern for ml/, ag/, sys/ sub-areas.
+`filelist_te_ag` → `^filelist_te` + `~/gopro/go/te/ag/**`
+
+## 3-layer hierarchy (browse.conf)
+`[all]` (2d) → `[work]`/`[life]` (2w/2l) → each area/project section.
+- **Layer 1** `[all]`: every area/project todo, each entry's kid = its *cluster* (`> work`/`> life`) — right-arrow groups them. The cluster ring is exactly {work, life}, so `[`/`]`/**tab** is a clean **work⇄life** toggle (sideways nav: `]`/tab=next, `[`/⇧tab=prev).
+- **Layer 2** `[work]`/`[life]` (`^all`): cluster's todos, each `> section` → its area. work = scagent/te/le/bb/audio/demo/sys/kb/**bf** · life = aa/bx/mv/po/re/so/te/kb/**tr**. te+kb appear in both.
+- **Layer 3** area sections: the files. **tr nests under life, bf under work** (travel=life, browsefiles=dev) — reached one level deeper (all→life→tr, all→work→bf), NOT cluster peers.
+
+**Breadcrumb nav (the `^parent` is now only a fallback):** zoom-in pushes the current section onto a `BF_STACK` env breadcrumb, so zoom-out/sideways follow the *path you actually took*, not the static `^parent`. This fixes multi-entry sections (te/kb in work+life; scagent/sys/demo/bf in work+pr/dev): e.g. `2w`→te→out now returns to **work**, and sideways from te cycles **work's** kids — not dev's. The conf `^parent` is used only on **direct entry** (alias jumps like `k2`,`5`) where there's no breadcrumb. Static parents: life areas (incl tr) `^life`, le/bf `^work`, te/kb + pr-projects `^dev`/`^pr`.
+Aliases `2w`/`2l` manual in `.common.sh` (no `X!` ‼️ aliases since @1107 — filter inside bf); `work`/`life` in auto-gen `_bskip` (cluster meta, no cd/`*2` alias) — mirrors `all`/`2d`.
+
+## Key browsefiles.py internals
+- `parse_filelist()`: reads filelist, expands globs, builds `files_with_path` + `files_with_kid`
+- `files_with_kid`: parallel list — kid filelist path per file (space `" "` if no kid)
+- Right key on a file with kid → relaunches on the kid section to zoom in (pushes self onto `BF_STACK`)
+- Left key → `zoom_out()`: pops `BF_STACK` to the real parent; only if stack empty falls back to static `^parent`
+- `[`/`]`/tab/⇧tab → `zoom_side()`: cycles the *breadcrumb* parent's kids (not static `^`); seeds `[parent]` on direct entry
+- `NAV_STACK` (global) ⇄ `BF_STACK` (env, `\x1f`-joined): breadcrumb of ancestor sections, root-first, excl. current
+- `make_abs_filepath()`: expands `~`, resolves relative paths, runs glob with `recursive=True`
+- Sort: zip(kid, path) sorted together, then todos floated to top
