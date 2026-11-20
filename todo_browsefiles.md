@@ -5,6 +5,7 @@
 ## 📆
 
 ## 🔵
+- 🤖 **`browsefiles.py --help`** (M8 #259 @1121) — last crew script w/o --help (bin_inventory) ➡ y + wh + 2-3 examples, exits b4 th TUI starts · cmds row · README § bin
 - 🤖 **`l` file list: number keys** (scrap @1119) — `1` selects but needs enter, `2`-`9` open direct ➡ `1` opens direct too · shift+1-9/0 = 11-20 · shift/ctrl+up/down = skip 5
 - 🦠 **filter `P` (🎩 pm role) nvr fires** — main `P` = edit conf wins (found kb #150 @1118, help palette marks it ⚠️ shadowed) ➡ pick: new key 4 th filter o drop th row (scagent roles = parked)
 - 🩹 **todo board v2** (kb #141 @1117 · kb arch D-017 · SSOT `pr/kb/bin/tags.py` § todo board) — ✔️ @1118 kb #150: quick-add `!`/`2` ➡ top o 🔵 + `‼️` · `i`/`5` ➡ `## 💭` · `## 💭` off th todo view · left: `## ▶ NEXT` gone · new modifiers 👀 🧠 🧪 (filter keys?) · po moji ➡ ✊ (tags.py, derives)
