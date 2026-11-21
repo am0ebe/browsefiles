@@ -2105,7 +2105,19 @@ def main(stdscr):
 
 
 
+HELP = """browsefiles.py (bf) — curses TUI over a filelist: browse go/ by area, search, open i subl
+
+Why: 🦠 jumps through th KB by area + 1 key, not by typing paths
+Examples:
+  browsefiles.py ~/dotfiles/.config/user/browsefiles/go/te_filelist     # browse te/
+  browsefiles.py <filelist> docker compose                               # start w a search
+  cmds                                                                   # alias: browsefiles.py …/cmds_filelist
+Keys i th TUI: h = help · / search · e = subl · ctrl+e = 🌲 KB"""
+
 if __name__ == "__main__":
+	if {"-h", "--help"} & set(sys.argv[1:]):
+		print(HELP)
+		exit()
 	if len(sys.argv) < 2:
 		print(f"usage: {sys.argv[0]} filelist_containing_files to browse through")
 		exit()
